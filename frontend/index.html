@@ -1,0 +1,2819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STR Market Scanner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sans:   'Inter', system-ui, sans-serif;
+  --mono:   'DM Mono', monospace;
+  --serif:  'Instrument Serif', serif;
+
+  --bg:     #f2f1ed;
+  --card:   #ffffff;
+  --card2:  #fafaf8;
+  --bg3:    #eeede8;
+  --bg4:    #e5e4de;
+
+  --ink:    #18181b;
+  --ink2:   #52525b;
+  --ink3:   #a1a1aa;
+
+  --edge:   #e4e4e7;
+  --edge2:  #d4d4d8;
+
+  --gr:     #15803d;
+  --gr-bg:  #f0fdf4;
+  --gr-md:  #dcfce7;
+  --gr-bdr: #86efac;
+
+  --am:     #b45309;
+  --am-bg:  #fffbeb;
+  --am-bdr: #fcd34d;
+
+  --bl:     #1d4ed8;
+  --bl-bg:  #eff6ff;
+  --bl-bdr: #93c5fd;
+
+  --rd:     #b91c1c;
+  --rd-bg:  #fef2f2;
+
+  --sh:     0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  --sh2:    0 4px 12px rgba(0,0,0,.09), 0 12px 32px rgba(0,0,0,.07);
+  --r:  12px;
+  --rs: 8px;
+}
+
+html { font-size: 13px; }
+body { background: var(--bg); font-family: var(--sans); color: var(--ink); min-height: 100vh; line-height: 1.5; }
+body::before {
+  content: ''; display: block; height: 3px;
+  background: linear-gradient(90deg, #18181b 0%, #71717a 50%, #18181b 100%);
+  position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+}
+.app { max-width: 1080px; margin: 0 auto; padding: 3px 1.5rem 6rem; }
+a { color: inherit; }
+
+/* ━━━ HEADER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 1.5rem 0 1.25rem;
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: 1.5rem;
+}
+.hdr-logo {
+  width: 40px; height: 40px; border-radius: 11px;
+  background: linear-gradient(135deg, #18181b 0%, #52525b 100%); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,.2), 0 0 0 1px rgba(255,255,255,.08) inset;
+}
+.hdr-title { font-family: var(--serif); font-style: italic; font-size: 22px; line-height: 1; color: var(--ink); }
+.hdr-sub   { font-size: 11px; color: var(--ink3); margin-top: 3px; font-family: var(--mono); letter-spacing: .02em; }
+.hdr-r     { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.last-run  { font-size: 11px; color: var(--ink3); font-family: var(--mono); }
+.spill {
+  font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+  display: inline-flex; align-items: center; gap: 5px; letter-spacing: .02em;
+  font-family: var(--mono);
+}
+.spill.live { background: var(--gr-bg); color: var(--gr); border: 1px solid var(--gr-bdr); }
+.spill.demo { background: var(--am-bg); color: var(--am); border: 1px solid var(--am-bdr); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; flex-shrink: 0; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ━━━ TABS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.tabs { display: flex; border-bottom: 1px solid var(--edge); margin-bottom: 1.75rem; }
+.tab {
+  font-size: 13px; font-weight: 500; padding: 10px 20px;
+  border: none; background: transparent; color: var(--ink3); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .15s, border-color .15s; white-space: nowrap; font-family: var(--sans);
+}
+.tab.active  { color: var(--ink); border-bottom-color: var(--ink); }
+.tab:hover:not(.active) { color: var(--ink2); }
+.panel { display: none; } .panel.active { display: block; }
+.bnum {
+  display: inline-block; background: var(--bg3); border-radius: 20px;
+  padding: 1px 7px; font-size: 10px; color: var(--ink2); font-weight: 500;
+  font-family: var(--mono); vertical-align: middle;
+}
+
+/* ━━━ UTILITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.slabel {
+  font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  color: var(--ink3); text-transform: uppercase; margin-bottom: 10px; font-family: var(--mono);
+  display: flex; align-items: center; gap: 8px;
+}
+.slabel::after {
+  content: ''; flex: 1; height: 1px; background: var(--edge);
+}
+.divider { height: 1px; background: var(--edge); margin: 1.75rem 0; }
+.banner {
+  border-radius: var(--rs); padding: 11px 15px; margin-bottom: 1.25rem;
+  display: flex; align-items: flex-start; gap: 10px; font-size: 12px;
+  border: 1px solid; line-height: 1.6;
+}
+.banner.offline { background: var(--am-bg); border-color: var(--am-bdr); color: var(--am); }
+
+/* ━━━ MARKET CONTROLS BAR ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.mkt-controls {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px; padding: 9px 14px;
+  background: var(--card); border: 1.5px solid var(--edge);
+  border-radius: var(--rs); box-shadow: var(--sh);
+}
+.mkt-sel-count {
+  font-size: 12px; font-weight: 600; color: var(--ink);
+  font-family: var(--mono);
+}
+.mkt-sel-sub  { font-size: 11px; color: var(--ink3); font-family: var(--mono); }
+.mkt-ctrl-btn {
+  font-size: 10px; color: var(--ink3); background: none;
+  border: 1px solid var(--edge); border-radius: 4px;
+  padding: 3px 9px; cursor: pointer; font-family: var(--mono);
+  transition: all .15s; margin-left: auto;
+}
+.mkt-ctrl-btn:hover { border-color: var(--ink2); color: var(--ink2); }
+.mkt-ctrl-sep { font-size: 11px; color: var(--edge2); margin-left: -4px; }
+
+/* ━━━ MARKET CARDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.mgrid { margin-bottom: 10px; }
+.mgroup { margin-bottom: 10px; }
+.mgroup-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--rs);
+  background: var(--card2); border: 1px solid var(--edge);
+  cursor: pointer; user-select: none;
+  transition: background .15s, border-color .15s;
+}
+.mgroup-header:hover { background: var(--bg4); border-color: var(--edge2); }
+.mgroup-chevron {
+  font-size: 9px; color: var(--ink3); transition: transform .22s ease;
+  flex-shrink: 0; line-height: 1;
+}
+.mgroup.collapsed .mgroup-chevron { transform: rotate(-90deg); }
+.mgroup-state {
+  font-size: 10px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink2);
+  font-family: var(--mono);
+}
+.mgroup-count {
+  font-size: 10px; color: var(--ink3); font-family: var(--mono);
+}
+.mgroup-sel-indicator {
+  margin-left: 2px; font-size: 10px; color: var(--gr);
+  font-family: var(--mono); font-weight: 600;
+}
+.mgroup-sel-btn {
+  margin-left: auto; font-size: 10px; color: var(--ink3);
+  background: none; border: 1px solid var(--edge); border-radius: 4px;
+  padding: 2px 8px; cursor: pointer; font-family: var(--mono);
+  transition: all .15s;
+}
+.mgroup-sel-btn:hover { border-color: var(--ink2); color: var(--ink2); }
+.mgroup-body {
+  overflow: hidden;
+  max-height: 2000px;
+  transition: max-height .28s ease, opacity .2s ease, margin .2s ease;
+  opacity: 1;
+  margin-top: 8px;
+}
+.mgroup.collapsed .mgroup-body {
+  max-height: 0; opacity: 0; margin-top: 0;
+}
+.mgroup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 7px;
+}
+.mcard {
+  background: var(--card); border: 1.5px solid var(--edge);
+  border-radius: 9px; padding: 10px 11px;
+  display: flex; flex-direction: column; gap: 8px;
+  box-shadow: var(--sh); transition: border-color .15s, box-shadow .15s;
+  user-select: none; position: relative;
+}
+.mcard.sel { border-color: var(--ink); }
+.mcard.hl  { animation: flashIn .8s ease forwards; }
+@keyframes flashIn { 0%{border-color:var(--gr);background:var(--gr-bg)} 100%{} }
+.mcard:hover { box-shadow: var(--sh2); }
+.mcard:hover .del-btn { opacity: 1; }
+
+.mcard-top { display: flex; align-items: flex-start; gap: 4px; }
+.mcard-info { flex: 1; cursor: pointer; min-width: 0; }
+.mname  { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mstate { font-size: 11px; color: var(--ink3); margin-top: 1px; font-family: var(--mono); }
+
+.del-btn {
+  background: none; border: none; cursor: pointer; font-size: 14px;
+  color: var(--ink3); padding: 1px 4px; border-radius: 4px;
+  opacity: 0; transition: opacity .15s, color .15s; flex-shrink: 0; line-height: 1;
+}
+.del-btn:hover { color: var(--rd); }
+
+.mcard-bot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pool-btn {
+  font-family: var(--mono); font-size: 10px; padding: 3px 9px;
+  border-radius: 20px; border: 1px solid var(--edge2); background: transparent;
+  color: var(--ink3); cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.pool-btn.on { background: var(--bl-bg); color: var(--bl); border-color: var(--bl-bdr); font-weight: 500; }
+.pool-btn:hover:not(.on) { border-color: var(--edge2); color: var(--ink2); }
+
+.chk {
+  width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--edge2);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all .15s; cursor: pointer;
+}
+.mcard.sel .chk { background: var(--ink); border-color: var(--ink); }
+.chk svg { width: 8px; height: 8px; opacity: 0; transition: opacity .15s; }
+.mcard.sel .chk svg { opacity: 1; }
+
+/* — Per-market price range — */
+.mcard-price {
+  font-size: 10px; font-family: var(--mono); color: var(--ink3);
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 7px 0 0; border-top: 1px solid var(--edge);
+  transition: color .15s; user-select: none;
+}
+.mcard-price:hover { color: var(--ink2); }
+.mcard-price.custom { color: var(--bl); font-weight: 500; }
+.mcard-price-icon { font-size: 11px; opacity: .45; flex-shrink: 0; }
+.mcard-price:hover .mcard-price-icon { opacity: 1; }
+.mcard-price-edit {
+  padding-top: 8px; border-top: 1px solid var(--edge);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.mcard-price-inputs { display: flex; align-items: center; gap: 3px; }
+.mcard-price-sep { font-size: 10px; color: var(--ink3); flex-shrink: 0; padding: 0 1px; }
+.mcard-price-inputs input {
+  flex: 1; min-width: 0;
+  font-size: 10px !important; padding: 4px 5px !important;
+  border-radius: 6px !important; border: 1.5px solid var(--edge) !important;
+  background: var(--bg3) !important; font-family: var(--mono) !important;
+  color: var(--ink) !important; width: 0;
+}
+.mcard-price-inputs input:focus {
+  border-color: var(--ink2) !important; background: var(--card) !important;
+  box-shadow: 0 0 0 2px rgba(24,24,27,.07) !important;
+}
+.mcard-price-actions { display: flex; gap: 4px; }
+.mpbtn {
+  flex: 1; font-size: 9px; font-weight: 600; padding: 4px 0;
+  border-radius: 6px; cursor: pointer; font-family: var(--mono);
+  border: 1px solid var(--edge2); background: var(--card2); color: var(--ink2);
+  transition: all .15s; text-align: center; line-height: 1.3;
+}
+.mpbtn:hover { background: var(--bg4); color: var(--ink); }
+.mpbtn.save { background: var(--ink); color: white; border-color: var(--ink); }
+.mpbtn.save:hover { opacity: .82; }
+
+.add-mkt-btn {
+  border: 1.5px dashed var(--edge2); border-radius: 10px;
+  padding: 11px 14px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; font-size: 12px; color: var(--ink3); background: transparent;
+  font-family: var(--sans); transition: all .15s; width: 100%; margin-bottom: 1.5rem;
+}
+.add-mkt-btn:hover { color: var(--ink); border-color: var(--ink2); border-style: solid; }
+
+/* ━━━ FORM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.cgrid  { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 1.5rem; }
+.cf     { display: flex; flex-direction: column; gap: 7px; }
+.flabel { font-size: 12px; color: var(--ink2); font-weight: 500; }
+.frow   { display: flex; gap: 7px; align-items: center; }
+.fsep   { font-size: 12px; color: var(--ink3); white-space: nowrap; flex-shrink: 0; }
+
+input[type="number"], input[type="text"], select {
+  font-family: var(--sans); font-size: 13px; background: var(--card);
+  border: 1.5px solid var(--edge); border-radius: var(--rs);
+  padding: 8px 11px; color: var(--ink); outline: none;
+  transition: border-color .15s, box-shadow .15s; width: 100%;
+}
+input:focus, select:focus {
+  border-color: var(--ink2); box-shadow: 0 0 0 3px rgba(24,24,27,.08);
+}
+.pfx-w { position: relative; display: flex; align-items: center; flex: 1; }
+.pfx   { position: absolute; left: 11px; font-size: 12px; color: var(--ink3); pointer-events: none; z-index: 1; font-family: var(--mono); }
+.pfx-w input { padding-left: 20px; }
+.sfx-w { position: relative; display: flex; align-items: center; flex: 1; }
+.sfx   { position: absolute; right: 11px; font-size: 12px; color: var(--ink3); pointer-events: none; font-family: var(--mono); }
+
+/* ━━━ PILLS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill {
+  font-family: var(--sans); font-size: 12px; font-weight: 500; padding: 6px 15px;
+  border-radius: 20px; border: 1.5px solid var(--edge); background: var(--card);
+  color: var(--ink2); cursor: pointer; transition: all .15s;
+}
+.pill.active { background: var(--ink); color: white; border-color: var(--ink); }
+.pill:hover:not(.active) { border-color: var(--edge2); color: var(--ink); }
+
+/* ━━━ TOGGLE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.tog {
+  width: 38px; height: 22px; background: var(--edge2); border-radius: 11px;
+  position: relative; cursor: pointer; transition: background .2s; border: none; flex-shrink: 0;
+}
+.tog.on { background: var(--gr); }
+.tog-t  {
+  width: 16px; height: 16px; background: white; border-radius: 50%;
+  position: absolute; top: 3px; left: 3px; transition: left .2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+.tog.on .tog-t { left: 19px; }
+
+/* ━━━ SCHEDULE ROW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.sched-row {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 1.75rem;
+  padding: 14px 18px; background: var(--card); border-radius: var(--r);
+  border: 1.5px solid var(--edge); box-shadow: var(--sh);
+}
+.sched-lbl { font-size: 13px; color: var(--ink2); }
+.sched-val { font-size: 13px; font-weight: 600; }
+
+/* ━━━ BUTTONS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.btn {
+  font-family: var(--sans); font-size: 13px; font-weight: 600; padding: 10px 24px;
+  background: var(--ink); color: white; border: none; border-radius: var(--rs);
+  cursor: pointer; transition: opacity .15s, transform .1s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.18);
+}
+.btn:hover   { opacity: .85; transform: translateY(-1px); }
+.btn:active  { transform: translateY(0); }
+.btn:disabled{ opacity: .4; cursor: not-allowed; transform: none; }
+.ghost {
+  font-family: var(--sans); font-size: 13px; font-weight: 500; padding: 9px 18px;
+  background: var(--card); color: var(--ink2); border: 1.5px solid var(--edge);
+  border-radius: var(--rs); cursor: pointer; transition: all .15s;
+}
+.ghost:hover { color: var(--ink); border-color: var(--edge2); }
+.icon-btn {
+  background: var(--card); border: 1.5px solid var(--edge); border-radius: var(--rs);
+  padding: 7px 13px; cursor: pointer; font-family: var(--sans); font-size: 12px;
+  font-weight: 500; color: var(--ink2); display: flex; align-items: center;
+  gap: 6px; transition: all .15s;
+}
+.icon-btn:hover { color: var(--ink); border-color: var(--edge2); }
+
+/* ━━━ SCAN PROGRESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.scan-prog {
+  display: none; align-items: center; gap: 10px; font-size: 13px; color: var(--ink2);
+  padding: 12px 16px; background: var(--card); border: 1.5px solid var(--edge);
+  border-radius: var(--rs); margin-bottom: 16px; box-shadow: var(--sh);
+}
+.scan-prog.show { display: flex; }
+.spin { display: inline-block; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.mkt-badges { display: flex; gap: 5px; margin-left: auto; flex-wrap: wrap; }
+.mb { font-size: 10px; padding: 2px 9px; border-radius: 20px; border: 1px solid var(--edge); color: var(--ink3); font-family: var(--mono); }
+.mb.done    { color: var(--gr); border-color: var(--gr-bdr); background: var(--gr-bg); }
+.mb.loading { color: var(--am); border-color: var(--am-bdr); background: var(--am-bg); }
+.mb.error   { color: var(--rd); border-color: #fca5a5;       background: var(--rd-bg); }
+
+/* ━━━ METRICS ROW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 1.75rem; }
+.met {
+  background: var(--card); border-radius: var(--r); padding: 18px 20px;
+  border: 1.5px solid var(--edge); box-shadow: var(--sh);
+}
+.met-l { font-size: 10px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; font-family: var(--mono); }
+.met-v { font-size: 28px; font-weight: 700; line-height: 1; font-family: var(--mono); }
+.met-s { font-size: 11px; color: var(--ink3); margin-top: 5px; }
+.met-s.up { color: var(--gr); font-weight: 600; }
+
+/* ━━━ MARKET CHIPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.mchips { display: flex; gap: 6px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.mchip {
+  font-size: 12px; font-weight: 500; padding: 5px 14px; border-radius: 20px;
+  border: 1.5px solid var(--edge); color: var(--ink2); cursor: pointer;
+  transition: all .15s; white-space: nowrap; background: var(--card);
+}
+.mchip.active { background: var(--ink); color: white; border-color: var(--ink); }
+.mchip:hover:not(.active) { border-color: var(--edge2); color: var(--ink); }
+
+/* ━━━ TOOLBAR ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 10px; flex-wrap: wrap; }
+.res-lbl { font-size: 13px; color: var(--ink2); font-weight: 500; }
+.toolbar-r { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sp {
+  font-family: var(--sans); font-size: 11px; font-weight: 500; padding: 5px 13px;
+  border-radius: 20px; border: 1.5px solid var(--edge); background: var(--card);
+  color: var(--ink3); cursor: pointer; transition: all .15s;
+}
+.sp.active { background: var(--ink); color: white; border-color: var(--ink); }
+.sp:hover:not(.active) { color: var(--ink2); border-color: var(--edge2); }
+
+/* ━━━ PROPERTY CARDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.plist { display: flex; flex-direction: column; gap: 14px; }
+
+.pcard {
+  background: var(--card);
+  border: 1.5px solid var(--edge);
+  border-radius: 14px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 210px 1fr 258px;
+  transition: border-color .2s, box-shadow .2s, transform .15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06), 0 0 0 0 transparent;
+  position: relative;
+}
+.pcard:hover {
+  border-color: var(--edge2);
+  box-shadow: 0 8px 28px rgba(0,0,0,.1), 0 2px 8px rgba(0,0,0,.06);
+  transform: translateY(-2px);
+}
+.pcard.is-new   { border-left: 3px solid var(--gr); }
+.pcard.faved    { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,.12); }
+.pcard.yield-hi { border-left: 3px solid var(--gr); }
+/* full-card link overlay */
+.pcard-link { position:absolute; inset:0; z-index:0; }
+.pcard { position:relative; }
+.fav-btn, .rfn-link { position:relative; z-index:1; }
+
+/* — Photo column — */
+.pphoto {
+  background: linear-gradient(135deg, var(--bg3) 0%, var(--bg4) 100%);
+  position: relative; min-height: 148px; overflow: hidden;
+}
+.pphoto img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s ease; }
+.pcard:hover .pphoto img { transform: scale(1.04); }
+.pphoto-ph {
+  width: 100%; height: 100%; min-height: 148px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink3); font-size: 32px; flex-direction: column; gap: 8px;
+}
+.pphoto-ph-sub { font-size: 10px; color: var(--ink3); font-family: var(--mono); }
+.new-badge {
+  position: absolute; top: 10px; left: 10px;
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  padding: 4px 10px; border-radius: 20px;
+  background: var(--gr); color: white; text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(21,128,61,.35);
+}
+.dom-badge {
+  position: absolute; bottom: 10px; left: 10px;
+  font-size: 9px; font-weight: 600; letter-spacing: .04em;
+  padding: 3px 9px; border-radius: 20px;
+  background: rgba(24,24,27,.72); color: rgba(255,255,255,.9);
+  backdrop-filter: blur(6px); font-family: var(--mono);
+}
+
+/* — Info column — */
+.pinfo {
+  padding: 16px 18px; border-right: 1px solid var(--edge);
+  display: flex; flex-direction: column; gap: 0; justify-content: space-between;
+}
+.paddr  {
+  font-size: 14px; font-weight: 600; margin-bottom: 4px;
+  line-height: 1.3; color: var(--ink); letter-spacing: -.01em;
+}
+.pmeta  {
+  font-size: 11px; color: var(--ink3); margin-bottom: 0;
+  font-family: var(--mono); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.pmeta-sep { opacity: .4; }
+.pbeds-row {
+  display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap;
+}
+.pbed-chip {
+  font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 8px;
+  background: var(--bg3); color: var(--ink2); border: 1px solid var(--edge);
+  font-family: var(--mono); white-space: nowrap;
+}
+.ptags  { display: flex; gap: 5px; flex-wrap: wrap; margin-top: auto; }
+.tag    {
+  font-size: 10px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid var(--edge); color: var(--ink2); white-space: nowrap;
+  background: var(--card2);
+}
+.tag.g  { background: var(--gr-bg); color: var(--gr); border-color: var(--gr-bdr); }
+.tag.b  { background: var(--bl-bg); color: var(--bl); border-color: var(--bl-bdr); }
+.tag.a  { background: var(--am-bg); color: var(--am); border-color: var(--am-bdr); }
+.tag.r  { background: var(--rd-bg); color: var(--rd); border-color: #fca5a5; }
+.tag.dim { background: var(--bg3); color: var(--ink3); border-color: var(--edge); font-family: var(--mono); }
+
+/* — Financials column — */
+.pfin {
+  padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--card2); position: relative;
+}
+.pfin-accent {
+  position: absolute; top: 0; right: 0; left: 0; height: 3px; border-radius: 0;
+  background: linear-gradient(90deg, var(--edge) 0%, var(--edge) 100%);
+  transition: background .3s;
+}
+.pcard.yield-hi .pfin-accent { background: linear-gradient(90deg, var(--gr) 0%, #22c55e 100%); }
+.pcard.yield-md .pfin-accent { background: linear-gradient(90deg, #d97706 0%, #f59e0b 100%); }
+
+.pf-header { display: flex; align-items: flex-start; justify-content: space-between; }
+.priceval  { font-size: 24px; font-weight: 800; line-height: 1; font-family: var(--mono); letter-spacing: -.03em; }
+.pricesub  { font-size: 10px; color: var(--ink3); margin-top: 4px; font-family: var(--mono); }
+.fav-btn   {
+  background: none; border: none; cursor: pointer; font-size: 20px;
+  color: var(--edge2); transition: color .15s, transform .1s; padding: 0; line-height: 1; flex-shrink: 0;
+}
+.fav-btn:hover  { color: #f59e0b; transform: scale(1.15); }
+.fav-btn.on     { color: #f59e0b; }
+
+/* — Yield hero — */
+.yield-hero {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid var(--edge);
+  background: var(--bg3);
+}
+.yield-hero.hi {
+  background: var(--gr-bg); border-color: var(--gr-bdr);
+}
+.yield-hero.hi .yh-val { color: var(--gr); }
+.yield-hero.md { background: var(--am-bg); border-color: var(--am-bdr); }
+.yield-hero.md .yh-val { color: var(--am); }
+.yh-val  { font-size: 26px; font-weight: 800; line-height: 1; font-family: var(--mono); letter-spacing: -.04em; }
+.yh-info { flex: 1; min-width: 0; }
+.yh-lbl  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink3); font-family: var(--mono); }
+.yh-sub  { font-size: 10px; color: var(--ink3); margin-top: 2px; font-family: var(--mono); }
+
+/* — Metric boxes — */
+.pf-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pf-box {
+  background: var(--bg3); border-radius: 8px; padding: 9px 11px;
+  border: 1px solid var(--edge); transition: background .15s;
+}
+.pf-box.income { background: var(--gr-bg); border-color: var(--gr-bdr); }
+.pf-box.income .pf-v { color: var(--gr); }
+.pf-v { font-size: 14px; font-weight: 700; line-height: 1; font-family: var(--mono); }
+.pf-l { font-size: 9px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .06em; margin-top: 3px; font-family: var(--mono); }
+
+.rfn-link {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  text-align: center; font-size: 12px; font-weight: 600;
+  color: var(--ink); text-decoration: none; padding: 9px; border-radius: var(--rs);
+  border: 1.5px solid var(--edge); background: var(--card);
+  transition: all .15s; margin-top: auto; letter-spacing: -.01em;
+}
+.rfn-link:hover { background: var(--ink); color: white; border-color: var(--ink); box-shadow: 0 4px 12px rgba(24,24,27,.2); }
+
+/* ━━━ REGULATIONS BUTTON ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.regs-btn {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--ink2); text-decoration: none;
+  padding: 7px 9px; border-radius: var(--rs); border: 1.5px solid var(--edge);
+  background: var(--bg2); cursor: pointer; transition: all .15s;
+  letter-spacing: -.01em; position: relative; z-index: 1;
+}
+.regs-btn:hover { background: var(--card); border-color: var(--ink3); color: var(--ink); }
+.regs-badge { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:2px; }
+.regs-badge.allowed     { background: #22c55e; }
+.regs-badge.restricted  { background: #f59e0b; }
+.regs-badge.banned      { background: #ef4444; }
+.regs-badge.unregulated { background: #6b7280; }
+.regs-badge.unknown     { background: #d1d5db; }
+
+/* ━━━ REGULATIONS MODAL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#reg-modal { display:none; position:fixed; inset:0; z-index:1000;
+  background: rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; }
+#reg-modal.open { display:flex; }
+.reg-panel {
+  background: var(--card); border: 1.5px solid var(--edge);
+  border-radius: var(--r); padding: 28px 28px 24px;
+  width: min(520px, 92vw); max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+}
+.reg-panel-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; }
+.reg-panel-title  { font-size:17px; font-weight:700; color:var(--ink); }
+.reg-panel-sub    { font-size:12px; color:var(--ink3); margin-top:2px; }
+.reg-close-btn    { background:none; border:none; font-size:20px; cursor:pointer; color:var(--ink3); padding:0 4px; line-height:1; }
+.reg-status-bar {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 14px; border-radius:var(--rs); margin-bottom:16px;
+  font-size:13px; font-weight:600;
+}
+.reg-status-bar.allowed     { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.reg-status-bar.restricted  { background:#fef9c3; color:#92400e; border:1px solid #fde68a; }
+.reg-status-bar.banned      { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
+.reg-status-bar.unregulated { background:var(--bg3); color:var(--ink2); border:1px solid var(--edge); }
+.reg-status-bar.unknown     { background:var(--bg3); color:var(--ink3); border:1px solid var(--edge); }
+.reg-status-icon { font-size:20px; }
+.reg-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+.reg-cell { background:var(--bg2); border:1px solid var(--edge); border-radius:var(--rs); padding:10px 12px; }
+.reg-cell-lbl { font-size:10px; font-weight:600; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+.reg-cell-val { font-size:13px; font-weight:600; color:var(--ink); line-height:1.3; }
+.reg-rules { margin-bottom:16px; }
+.reg-rules-title { font-size:11px; font-weight:700; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+.reg-rule { font-size:12px; color:var(--ink2); padding:6px 10px; background:var(--bg2);
+  border-left:2px solid var(--edge); border-radius:0 4px 4px 0; margin-bottom:5px; line-height:1.4; }
+.reg-source-link { display:block; text-align:center; font-size:12px; color:var(--ink3);
+  text-decoration:none; margin-top:8px; padding:8px; border:1px solid var(--edge);
+  border-radius:var(--rs); transition:all .15s; }
+.reg-source-link:hover { background:var(--bg2); color:var(--ink); }
+.reg-loading { text-align:center; padding:32px; color:var(--ink3); font-size:13px; }
+
+/* ━━━ TOP PICKS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.tp-header {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:16px; margin-bottom:18px; flex-wrap:wrap;
+}
+.tp-title  { font-size:18px; font-weight:700; color:var(--ink); margin-bottom:3px; }
+.tp-sub    { font-size:12px; color:var(--ink3); max-width:480px; line-height:1.5; }
+.tp-controls { background:var(--card); border:1.5px solid var(--edge); border-radius:var(--r);
+  padding:14px 16px; margin-bottom:16px; display:flex; flex-direction:column; gap:10px; }
+.tp-control-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.tp-control-row .slabel { min-width:120px; margin:0; }
+.tp-control-row input[type=range] { flex:1; min-width:120px; max-width:220px; }
+.tp-score-display { font-size:14px; font-weight:700; color:var(--ink); min-width:28px; }
+.tp-hint { font-size:11px; color:var(--ink3); font-family:var(--mono); }
+/* progress */
+.tp-prog-bar-wrap { background:var(--bg3); border-radius:99px; height:6px; margin-bottom:10px; overflow:hidden; }
+.tp-prog-bar { height:100%; background:linear-gradient(90deg,var(--gr),#34d399); border-radius:99px; transition:width .3s; width:0%; }
+.tp-prog-status { font-size:12px; color:var(--ink3); font-family:var(--mono); margin-bottom:12px; }
+.tp-mkt-grid { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+.tp-mkt-chip { font-size:10px; font-weight:600; padding:3px 8px; border-radius:20px;
+  border:1px solid var(--edge); background:var(--bg2); color:var(--ink3);
+  transition: all .2s; letter-spacing:.02em; }
+.tp-mkt-chip.scanning { border-color:var(--am); color:var(--am); background:var(--am-bg); }
+.tp-mkt-chip.done     { border-color:var(--gr); color:var(--gr); background:rgba(34,197,94,.08); }
+.tp-mkt-chip.empty    { border-color:var(--edge); color:var(--ink4); background:var(--bg2); opacity:.5; }
+.tp-mkt-chip.error    { border-color:#ef4444; color:#ef4444; background:rgba(239,68,68,.07); }
+/* score badge on cards */
+.tp-score-badge {
+  position:absolute; top:10px; right:10px; z-index:2;
+  background:linear-gradient(135deg,#7c3aed,#4f46e5);
+  color:#fff; font-size:11px; font-weight:700; padding:3px 8px;
+  border-radius:20px; letter-spacing:.03em; box-shadow:0 2px 8px rgba(79,70,229,.35);
+}
+.tp-score-badge.elite  { background:linear-gradient(135deg,#b45309,#d97706); }
+.tp-score-badge.great  { background:linear-gradient(135deg,#065f46,#059669); }
+
+/* ━━━ EMPTY / FOOTER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.norez {
+  text-align: center; padding: 4rem 1rem; color: var(--ink3); font-size: 13px;
+  background: var(--card); border: 1.5px solid var(--edge); border-radius: var(--r);
+}
+.fav-empty { text-align: center; padding: 3rem 1rem; color: var(--ink3); font-size: 13px; line-height: 2; }
+.footer-note { font-size: 11px; color: var(--ink3); margin-top: 1.75rem; padding-top: 1rem; border-top: 1px solid var(--edge); text-align: center; font-family: var(--mono); }
+
+/* ━━━ SCHEDULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.scheds { display: flex; flex-direction: column; gap: 8px; }
+.si { background: var(--card); border-radius: var(--r); padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border: 1.5px solid var(--edge); box-shadow: var(--sh); }
+.si-name { font-size: 13px; font-weight: 600; }
+.si-mkts { font-size: 11px; color: var(--ink2); margin-top: 3px; font-family: var(--mono); }
+.si-r    { display: flex; align-items: center; gap: 12px; }
+.si-hist { font-size: 11px; color: var(--ink3); font-family: var(--mono); }
+.src-box { font-size: 13px; color: var(--ink2); line-height: 1.8; background: var(--card); border: 1.5px solid var(--edge); border-radius: var(--rs); padding: 14px 16px; box-shadow: var(--sh); }
+
+/* ━━━ MODAL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .2s; backdrop-filter: blur(3px);
+}
+.backdrop.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--card); border-radius: var(--r); padding: 28px;
+  width: 400px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  transform: translateY(10px); transition: transform .2s;
+}
+.backdrop.open .modal { transform: translateY(0); }
+.modal-title { font-family: var(--serif); font-style: italic; font-size: 21px; margin-bottom: 16px; }
+.modal input { width: 100%; margin-bottom: 10px; }
+.suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.sug { font-size: 12px; font-weight: 500; padding: 4px 12px; border: 1.5px solid var(--edge); border-radius: 20px; cursor: pointer; color: var(--ink2); transition: all .15s; }
+.sug:hover { border-color: var(--ink); color: var(--ink); }
+.modal-acts { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ━━━ TOAST ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.toasts { position: fixed; bottom: 28px; right: 28px; display: flex; flex-direction: column; gap: 8px; z-index: 200; pointer-events: none; }
+.toast { font-family: var(--sans); font-size: 13px; font-weight: 500; background: var(--ink); color: white; padding: 11px 18px; border-radius: var(--rs); box-shadow: 0 4px 24px rgba(0,0,0,.25); opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; max-width: 320px; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.g    { background: var(--gr); }
+.toast.r    { background: var(--rd); }
+
+/* ━━━ RESPONSIVE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* ━━━ METRICS UPGRADE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.met {
+  background: var(--card); border-radius: var(--r); padding: 20px 20px 16px;
+  border: 1.5px solid var(--edge); box-shadow: var(--sh); position: relative; overflow: hidden;
+}
+.met::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+  background: var(--edge); border-radius: 0 0 var(--r) var(--r);
+}
+.met-l { font-size: 10px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; font-family: var(--mono); }
+.met-v { font-size: 30px; font-weight: 800; line-height: 1; font-family: var(--mono); letter-spacing: -.03em; }
+.met-s { font-size: 11px; color: var(--ink3); margin-top: 6px; }
+.met-s.up { color: var(--gr); font-weight: 600; }
+
+/* ━━━ CASH FLOW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.cf-assume {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+  margin-bottom: 1.5rem; padding: 14px 16px;
+  background: var(--card); border: 1.5px solid var(--edge);
+  border-radius: var(--r); box-shadow: var(--sh);
+}
+.cf-assume-field { display: flex; flex-direction: column; gap: 5px; }
+.cf-assume-label { font-size: 10px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing:.08em; font-family: var(--mono); }
+.cf-assume-row   { display: flex; align-items: center; gap: 4px; }
+.cf-assume-row input { font-size: 13px; padding: 6px 8px; width: 70px; text-align: right; }
+.cf-assume-row span  { font-size: 12px; color: var(--ink3); font-family: var(--mono); flex-shrink: 0; }
+
+.cf-hero {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid var(--edge); background: var(--bg3);
+  margin-bottom: 2px;
+}
+.cf-hero.pos { background: var(--gr-bg); border-color: var(--gr-bdr); }
+.cf-hero.neg { background: var(--rd-bg); border-color: #fca5a5; }
+.cf-hero-val { font-size: 22px; font-weight: 800; line-height: 1; font-family: var(--mono); letter-spacing: -.04em; }
+.cf-hero.pos .cf-hero-val { color: var(--gr); }
+.cf-hero.neg .cf-hero-val { color: var(--rd); }
+.cf-hero-info { flex: 1; min-width: 0; }
+.cf-hero-lbl  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing:.08em; color: var(--ink3); font-family: var(--mono); }
+.cf-hero-sub  { font-size: 10px; color: var(--ink3); margin-top: 2px; font-family: var(--mono); }
+
+.cf-row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; font-family: var(--mono); color: var(--ink3);
+  padding: 3px 0; border-top: 1px solid var(--edge);
+}
+.cf-row-lbl { }
+.cf-row-val { font-weight: 600; color: var(--ink2); }
+
+/* ━━━ MAP VIEW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#map-container {
+  height: 580px; border-radius: var(--r); overflow: hidden;
+  border: 1.5px solid var(--edge); box-shadow: var(--sh);
+  position: relative; z-index: 0;
+}
+.map-toolbar {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.map-hint {
+  font-size: 11px; color: var(--ink3); font-family: var(--mono);
+  background: var(--card2); border: 1px solid var(--edge);
+  border-radius: 20px; padding: 4px 12px;
+}
+.map-empty {
+  display: none; text-align: center; padding: 2rem;
+  font-size: 13px; color: var(--ink3); background: var(--card);
+  border: 1.5px solid var(--edge); border-radius: var(--r);
+  margin-top: 12px;
+}
+.map-legend {
+  background: white; border-radius: var(--rs);
+  padding: 10px 14px; border: 1.5px solid var(--edge);
+  box-shadow: var(--sh); font-family: var(--mono); font-size: 11px;
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  margin-top: 12px;
+}
+.map-legend-label { font-size: 10px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing:.08em; margin-right: 4px; }
+.map-legend-item { display: flex; align-items: center; gap: 6px; color: var(--ink2); }
+.map-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.leaflet-popup-content-wrapper { border-radius: 12px !important; font-family: system-ui,sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,.14) !important; }
+.leaflet-popup-content { margin: 14px 16px !important; }
+.leaflet-popup-tip-container { margin-top: -1px !important; }
+
+@media (max-width: 700px) {
+  .cgrid   { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: 1fr 1fr; }
+  .pcard   { grid-template-columns: 1fr; }
+  .pphoto  { min-height: 180px; }
+  .pfin    { border-top: 1px solid var(--edge); background: var(--card); }
+  .dom-badge { display: none; }
+}
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+</head>
+<body>
+<div class="app">
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
+<div class="header">
+  <div class="hdr-logo">◎</div>
+  <div>
+    <div class="hdr-title">STR Market Scanner</div>
+    <div class="hdr-sub">short-term rental deal finder</div>
+  </div>
+  <span class="spill live" id="live-tag" style="display:none"><span class="dot"></span>live · redfin</span>
+  <span class="spill demo" id="demo-tag" style="display:none">⚠ backend offline</span>
+  <div class="hdr-r">
+    <span class="last-run" id="last-run">—</span>
+  </div>
+</div>
+
+<!-- ═══ TABS ═════════════════════════════════════════════════ -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('markets')">Markets &amp; Criteria</button>
+  <button class="tab" onclick="switchTab('results')">Results <span class="bnum" id="res-badge">—</span></button>
+  <button class="tab" onclick="switchTab('map')">Map <span class="bnum" id="map-badge">—</span></button>
+  <button class="tab" onclick="switchTab('toppicks')">🏆 Top Picks <span class="bnum" id="tp-badge">—</span></button>
+  <button class="tab" onclick="switchTab('favorites')">Saved <span class="bnum" id="fav-badge">0</span></button>
+  <button class="tab" onclick="switchTab('schedules')">Schedules</button>
+</div>
+
+<!-- ═══ MARKETS TAB ══════════════════════════════════════════ -->
+<div id="tab-markets" class="panel active">
+
+  <div class="banner offline" id="backend-banner" style="display:none">
+    ⚠&nbsp; Backend offline — run
+    <code style="background:rgba(0,0,0,.06);padding:2px 7px;border-radius:4px;font-size:11px;margin:0 3px;font-family:var(--mono)">python3 -m uvicorn backend.main:app --port 8000 --reload</code>
+    to get live Redfin listings.
+  </div>
+
+  <div id="scan-prog" class="scan-prog">
+    <span class="spin">◌</span>
+    <span id="scan-txt">Scanning…</span>
+    <div class="mkt-badges" id="mkt-badges"></div>
+  </div>
+
+  <div class="mkt-controls" id="mkt-controls">
+    <div>
+      <span class="mkt-sel-count" id="mkt-sel-count">0 selected</span>
+      <span class="mkt-sel-sub" id="mkt-sel-sub"> · click market to toggle · pool btn filters for pools</span>
+    </div>
+    <button class="mkt-ctrl-btn" onclick="expandAllGroups()">expand all</button>
+    <span class="mkt-ctrl-sep">|</span>
+    <button class="mkt-ctrl-btn" onclick="collapseAllGroups()">collapse all</button>
+  </div>
+  <div class="mgrid" id="mgrid"></div>
+  <button class="add-mkt-btn" onclick="openModal()">+ Add market</button>
+
+  <div class="divider"></div>
+  <p class="slabel">Search criteria</p>
+
+  <div class="cgrid">
+    <div class="cf">
+      <span class="flabel">Price range</span>
+      <div class="frow">
+        <div class="pfx-w"><span class="pfx">$</span><input type="number" id="c-pmin" value="150000" step="10000" oninput="liveRefilter()"></div>
+        <span class="fsep">—</span>
+        <div class="pfx-w"><span class="pfx">$</span><input type="number" id="c-pmax" value="650000" step="10000" oninput="liveRefilter()"></div>
+      </div>
+    </div>
+    <div class="cf">
+      <span class="flabel">Bedrooms</span>
+      <div class="frow">
+        <input type="number" id="c-bmin" value="2" min="1" max="10" style="width:65px" oninput="liveRefilter()">
+        <span class="fsep">min</span>
+        <input type="number" id="c-bmax" value="6" min="1" max="10" style="width:65px" oninput="liveRefilter()">
+        <span class="fsep">max</span>
+      </div>
+    </div>
+    <div class="cf">
+      <span class="flabel">Min gross yield (est.)</span>
+      <div class="frow">
+        <div class="sfx-w" style="max-width:110px">
+          <input type="number" id="c-ymin" value="8" step="0.5" oninput="liveRefilter()">
+          <span class="sfx">%</span>
+        </div>
+        <span class="fsep">minimum</span>
+      </div>
+    </div>
+    <div class="cf">
+      <span class="flabel">Bathrooms min</span>
+      <div class="frow">
+        <input type="number" id="c-baMin" value="1" min="1" step="0.5" style="max-width:80px" oninput="liveRefilter()">
+      </div>
+    </div>
+    <div class="cf">
+      <span class="flabel">Sqft range</span>
+      <div class="frow">
+        <input type="number" id="c-smin" value="800" step="100" style="max-width:90px" oninput="liveRefilter()">
+        <span class="fsep">–</span>
+        <input type="number" id="c-smax" value="5000" step="100" style="max-width:90px" oninput="liveRefilter()">
+      </div>
+    </div>
+    <div class="cf">
+      <span class="flabel">Days on market</span>
+      <div class="pills">
+        <button class="pill" onclick="setDom(1,this)">1 day</button>
+        <button class="pill" onclick="setDom(7,this)">7 days</button>
+        <button class="pill active" onclick="setDom(30,this)">30 days</button>
+      </div>
+      <div id="dom-rescan-warn" style="display:none;align-items:center;gap:8px;margin-top:7px;font-size:11px;color:var(--am);background:var(--am-bg);border:1px solid var(--am-bdr);border-radius:6px;padding:6px 10px;">
+        ⚠ Last scan used a tighter range — re-run to see older listings
+      </div>
+    </div>
+  </div>
+
+  <p class="slabel">Property type</p>
+  <div class="pills" style="margin-bottom:1.5rem">
+    <button class="pill active" onclick="this.classList.toggle('active')">Single family</button>
+    <button class="pill active" onclick="this.classList.toggle('active')">Cabin / cottage</button>
+    <button class="pill" onclick="this.classList.toggle('active')">Multi-family</button>
+    <button class="pill" onclick="this.classList.toggle('active')">Condo / townhome</button>
+  </div>
+
+  <p class="slabel">Keywords</p>
+  <div style="margin-bottom:1.5rem">
+    <input type="text" id="c-kw" placeholder="e.g. mountain view, creek, hot tub">
+  </div>
+
+  <div class="divider"></div>
+  <p class="slabel">Financial assumptions</p>
+  <div class="cf-assume">
+    <div class="cf-assume-field">
+      <span class="cf-assume-label">Down payment</span>
+      <div class="cf-assume-row">
+        <input type="number" id="cf-down" value="20" min="0" max="100" step="5" oninput="liveRefilter()">
+        <span>%</span>
+      </div>
+    </div>
+    <div class="cf-assume-field">
+      <span class="cf-assume-label">Interest rate</span>
+      <div class="cf-assume-row">
+        <input type="number" id="cf-rate" value="7.25" min="0" max="20" step="0.125" oninput="liveRefilter()">
+        <span>%</span>
+      </div>
+    </div>
+    <div class="cf-assume-field">
+      <span class="cf-assume-label">Occupancy</span>
+      <div class="cf-assume-row">
+        <input type="number" id="cf-occ" value="65" min="10" max="95" step="5" oninput="liveRefilter()">
+        <span>%</span>
+      </div>
+    </div>
+    <div class="cf-assume-field">
+      <span class="cf-assume-label">Mgmt fee</span>
+      <div class="cf-assume-row">
+        <input type="number" id="cf-mgmt" value="20" min="0" max="50" step="1" oninput="liveRefilter()">
+        <span>%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sched-row">
+    <span class="sched-lbl">Daily auto-scan</span>
+    <button class="tog on" onclick="this.classList.toggle('on')"><div class="tog-t"></div></button>
+    <span class="sched-val" id="sched-label">6:00 AM daily</span>
+    <span style="flex:1"></span>
+    <span class="sched-lbl">Notify on new matches</span>
+    <button class="tog on" onclick="this.classList.toggle('on')"><div class="tog-t"></div></button>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn" id="run-btn" onclick="runScan()">▶ Run scan now</button>
+    <button class="ghost" onclick="switchTab('results')">View results →</button>
+  </div>
+</div>
+
+<!-- ═══ RESULTS TAB ══════════════════════════════════════════ -->
+<div id="tab-results" class="panel">
+  <div class="metrics">
+    <div class="met"><div class="met-l">Matches</div><div class="met-v" id="m-cnt">—</div><div class="met-s up" id="m-new"></div></div>
+    <div class="met"><div class="met-l">Avg list price</div><div class="met-v" id="m-price">—</div><div class="met-s" id="m-price-s"></div></div>
+    <div class="met"><div class="met-l">Avg gross yield</div><div class="met-v" id="m-yield">—</div><div class="met-s">estimated annual</div></div>
+    <div class="met"><div class="met-l">Avg days on mkt</div><div class="met-v" id="m-dom">—</div><div class="met-s">listing age</div></div>
+  </div>
+
+  <div class="mchips" id="mchips"></div>
+
+  <div class="toolbar">
+    <span class="res-lbl" id="res-label">Run a scan to see listings</span>
+    <div class="toolbar-r">
+      <button class="sp active" onclick="setSort('yield-desc',this)">Yield ↓</button>
+      <button class="sp" onclick="setSort('cf-desc',this)">Cash flow ↓</button>
+      <button class="sp" onclick="setSort('price-asc',this)">Price ↑</button>
+      <button class="sp" onclick="setSort('price-desc',this)">Price ↓</button>
+      <button class="sp" onclick="setSort('dom-asc',this)">Newest</button>
+      <button class="icon-btn" onclick="exportCSV()" style="margin-left:4px">↓ CSV</button>
+    </div>
+  </div>
+
+  <div class="plist" id="plist"></div>
+  <div class="norez" id="norez" style="display:none">
+    <div style="font-size:32px;margin-bottom:14px;opacity:.25">◎</div>
+    <div style="font-weight:600;margin-bottom:6px">No properties match your filters</div>
+    <span style="font-size:12px;color:var(--ink3)">Try widening your price range or lowering the minimum yield.</span>
+  </div>
+  <div class="footer-note" id="footer-note" style="display:none"></div>
+</div>
+
+<!-- ═══ SAVED TAB ════════════════════════════════════════════ -->
+<!-- ══ TOP PICKS PANEL ════════════════════════════════════════ -->
+<div id="tab-toppicks" class="panel">
+  <div class="tp-header">
+    <div>
+      <div class="tp-title">🏆 Top Picks</div>
+      <div class="tp-sub">Scans every enabled market and surfaces only the highest-potential properties</div>
+    </div>
+    <button class="btn" id="tp-run-btn" onclick="runTopScan()">▶ Scan All Markets</button>
+  </div>
+
+  <!-- Score threshold slider -->
+  <div class="tp-controls" id="tp-controls" style="display:none">
+    <div class="tp-control-row">
+      <label class="slabel">Min potential score</label>
+      <input type="range" id="tp-min-score" min="0" max="100" value="50" step="5" oninput="document.getElementById('tp-score-val').textContent=this.value;renderTopPicks()">
+      <span id="tp-score-val" class="tp-score-display">50</span>
+    </div>
+    <div class="tp-control-row">
+      <label class="slabel">Show top</label>
+      <select id="tp-limit" onchange="renderTopPicks()" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1.5px solid var(--edge);background:var(--card);color:var(--ink)">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="999">All qualifying</option>
+      </select>
+      <span class="tp-hint" id="tp-stats"></span>
+    </div>
+  </div>
+
+  <!-- Progress area -->
+  <div id="tp-progress" style="display:none">
+    <div class="tp-prog-bar-wrap"><div class="tp-prog-bar" id="tp-prog-bar"></div></div>
+    <div class="tp-prog-status" id="tp-prog-status">Scanning…</div>
+    <div class="tp-mkt-grid" id="tp-mkt-grid"></div>
+  </div>
+
+  <!-- Results -->
+  <div id="tp-empty" class="norez" style="margin-top:16px">
+    <div style="font-size:28px;opacity:.2;margin-bottom:10px">🏆</div>
+    Run a scan to find the top picks across all your markets.
+  </div>
+  <div class="plist" id="tp-list" style="display:none"></div>
+</div>
+
+<div id="tab-favorites" class="panel">
+  <p class="slabel" style="margin-bottom:12px">Saved properties</p>
+  <div class="plist" id="fav-list"></div>
+  <div class="fav-empty" id="fav-empty">
+    <div style="font-size:30px;opacity:.25;margin-bottom:10px">♡</div>
+    <strong>No saved properties yet</strong><br>
+    <span style="font-size:12px">Star a listing in Results to save it here.</span>
+  </div>
+</div>
+
+<!-- ═══ SCHEDULES TAB ════════════════════════════════════════ -->
+<div id="tab-schedules" class="panel">
+  <p class="slabel" style="margin-bottom:12px">Configured scans</p>
+  <div class="scheds">
+    <div class="si">
+      <div>
+        <div class="si-name">Daily — 6:00 AM MT</div>
+        <div class="si-mkts" id="sched-mkts">—</div>
+      </div>
+      <div class="si-r">
+        <span class="si-hist" id="sched-hist">—</span>
+        <button class="tog on" onclick="this.classList.toggle('on')"><div class="tog-t"></div></button>
+      </div>
+    </div>
+    <div class="si">
+      <div>
+        <div class="si-name">Weekly — Mon 7:00 AM MT</div>
+        <div class="si-mkts">Westminster CO · Denver metro</div>
+      </div>
+      <div class="si-r">
+        <span class="si-hist">Mon Apr 1 · 6 results</span>
+        <button class="tog" onclick="this.classList.toggle('on')"><div class="tog-t"></div></button>
+      </div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <p class="slabel">Data source</p>
+  <div class="src-box">
+    Listings pulled live from <strong>Redfin</strong> via Playwright — no API key required.<br>
+    Backend: <code style="font-size:11px;background:var(--bg3);padding:2px 7px;border-radius:4px;font-family:var(--mono)">http://localhost:8000</code>
+    <span id="backend-status-pill" style="margin-left:8px;font-size:10px;padding:2px 9px;border-radius:20px;background:var(--bg3);color:var(--ink3);font-family:var(--mono)">checking…</span>
+  </div>
+</div>
+</div>
+
+<!-- ═══ MAP TAB ══════════════════════════════════════════════ -->
+<div id="tab-map" class="panel">
+  <div class="map-toolbar">
+    <span class="res-lbl" id="map-label">Run a scan, then view results on the map</span>
+    <span class="map-hint">● click a market pin for listings</span>
+    <button class="icon-btn" style="margin-left:auto" onclick="renderMap()">↺ Refresh</button>
+  </div>
+  <div id="map-container"></div>
+  <div class="map-legend">
+    <span class="map-legend-label">Yield</span>
+    <span class="map-legend-item"><span class="map-dot" style="background:#16a34a"></span>≥ 12%</span>
+    <span class="map-legend-item"><span class="map-dot" style="background:#22c55e"></span>10–12%</span>
+    <span class="map-legend-item"><span class="map-dot" style="background:#f59e0b"></span>8–10%</span>
+    <span class="map-legend-item"><span class="map-dot" style="background:#94a3b8"></span>&lt; 8%</span>
+    <span style="margin-left:auto;font-size:10px;color:var(--ink3)">Pin size = number of listings</span>
+  </div>
+  <div class="map-empty" id="map-empty">
+    <div style="font-size:28px;margin-bottom:10px;opacity:.25">◎</div>
+    <strong>No results to map</strong><br>
+    <span style="font-size:12px">Run a scan or adjust your filters to see listings.</span>
+  </div>
+</div>
+
+<!-- ═══ MODAL ════════════════════════════════════════════════ -->
+<!-- ── Regulations modal ──────────────────────────────────── -->
+<div id="reg-modal" onclick="if(event.target===this)closeRegModal()">
+  <div class="reg-panel" id="reg-panel">
+    <div class="reg-loading">Loading regulations…</div>
+  </div>
+</div>
+
+<div class="backdrop" id="backdrop" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-title">Add a market</div>
+    <input type="text" id="mkt-input" placeholder="City, ST — e.g. Asheville, NC"
+      oninput="filterSugs()" onkeydown="if(event.key==='Enter')confirmMkt()">
+    <div class="suggest" id="sugs"></div>
+    <div class="modal-acts">
+      <button class="ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="confirmMkt()">Add market</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────
+// Auto-detect: use same origin in production, localhost in dev
+const BACKEND = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:8000'
+  : '';
+
+const MKT_SUGGESTIONS = [
+  'Asheville, NC','Smoky Mountains, TN','Moab, UT','Scottsdale, AZ',
+  'Lake Tahoe, CA','Destin, FL','Park City, UT','Telluride, CO',
+  'Savannah, GA','Joshua Tree, CA','Outer Banks, NC','Bend, OR',
+  'Taos, NM','Gulf Shores, AL','Montgomery, AL','Big Bear, CA','Breckenridge, CO',
+  'Stanton, KY','Logan, OH','Akron, OH','Fort Wayne, IN',
+  'Peoria, IL','Rockford, IL','Wichita, KS',
+  'Fairbanks, AK','Broken Bow, OK',
+  'Beech Mountain, NC','Sneads Ferry, NC',
+  'Davenport, FL','Tampa, FL',
+  'Spartanburg, SC','Hazel Park, MI',
+  'Gatlinburg, TN','Blue Ridge, GA','Pigeon Forge, TN','Sedona, AZ',
+  'Jackson, WY','Whitefish, MT','Branson, MO','Hilton Head, SC',
+  'Myrtle Beach, SC','Panama City Beach, FL','Kissimmee, FL',
+];
+
+// ─── STATE ────────────────────────────────────────────────────
+let backendOnline = false;
+let domFilter     = 30;
+let sortMode      = 'yield-desc';
+let PROPS         = [];
+let MARKETS = [
+  // ── Active selections ──────────────────────────────────────────
+  {name:'Divide',            state:'CO', sel:true,  pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Sedona',            state:'AZ', sel:true,  pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Gatlinburg',        state:'TN', sel:true,  pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Blue Ridge',        state:'GA', sel:true,  pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'West Palm Beach',   state:'FL', sel:true,  pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  // ── Colorado ───────────────────────────────────────────────────
+  {name:'Aspen',             state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Breckenridge',      state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Telluride',         state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Vail',              state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Steamboat Springs', state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Estes Park',        state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Crested Butte',     state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Durango',           state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Woodland Park',     state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cascade',           state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Westminster',       state:'CO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Arizona ────────────────────────────────────────────────────
+  {name:'Scottsdale',        state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Flagstaff',         state:'AZ', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Prescott',          state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Mesa',              state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Tempe',             state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Chandler',          state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Gilbert',           state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Glendale',          state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Tucson',            state:'AZ', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  // ── Tennessee ──────────────────────────────────────────────────
+  {name:'Pigeon Forge',      state:'TN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Sevierville',       state:'TN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Townsend',          state:'TN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cosby',             state:'TN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Arkansas ───────────────────────────────────────────────────
+  {name:'Hot Springs',       state:'AR', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Georgia ────────────────────────────────────────────────────
+  {name:'Helen',             state:'GA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Dahlonega',         state:'GA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Savannah',          state:'GA', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Tybee Island',      state:'GA', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  // ── Florida ────────────────────────────────────────────────────
+  {name:'Destin',            state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Panama City Beach', state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Kissimmee',         state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Naples',            state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Sarasota',          state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cape Coral',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Fort Myers',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Clearwater',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'St. Pete Beach',    state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'St. Augustine',     state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Marco Island',      state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Anna Maria',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Siesta Key',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Key West',          state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Orlando',           state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Boca Raton',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Fort Lauderdale',   state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Daytona Beach',      state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Jacksonville Beach', state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Bradenton',          state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Fort Walton Beach',  state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cocoa Beach',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Miami Beach',        state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Boynton Beach',      state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Delray Beach',       state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  // ── North Carolina ─────────────────────────────────────────────
+  {name:'Asheville',         state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Boone',             state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Brevard',           state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Bryson City',       state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cashiers',          state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Highlands',         state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Hendersonville',    state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cherokee',          state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Lake Norman',       state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── New York ───────────────────────────────────────────────────
+  {name:'Hunter',            state:'NY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Windham',           state:'NY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Lake Placid',       state:'NY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Ellicottville',     state:'NY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Pennsylvania ───────────────────────────────────────────────
+  {name:'Pocono Mountains',  state:'PA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Hershey',           state:'PA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── New Hampshire ──────────────────────────────────────────────
+  {name:'Conway',            state:'NH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Bartlett',          state:'NH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Gilford',           state:'NH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Maine ──────────────────────────────────────────────────────
+  {name:'Bethel',            state:'ME', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Newry',             state:'ME', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Massachusetts ──────────────────────────────────────────────
+  {name:'Great Barrington',  state:'MA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Vermont ────────────────────────────────────────────────────
+  {name:'Jay',               state:'VT', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Kentucky ───────────────────────────────────────────────────
+  {name:'Red River Gorge',   state:'KY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Indiana ────────────────────────────────────────────────────
+  {name:'Indianapolis',      state:'IN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'South Bend',        state:'IN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Fort Wayne',        state:'IN', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Ohio ───────────────────────────────────────────────────────
+  {name:'Logan',             state:'OH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Columbus',          state:'OH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Cincinnati',        state:'OH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Akron',             state:'OH', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Texas ──────────────────────────────────────────────────────
+  {name:'Austin',            state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Lake Travis',       state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'San Antonio',       state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Fredericksburg',    state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Wimberley',         state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'New Braunfels',     state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'South Padre Island',state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Waco',              state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Richardson',        state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Grand Prairie',     state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Irving',            state:'TX', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Abilene',           state:'TX', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Amarillo',          state:'TX', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Utah / Wyoming ─────────────────────────────────────────────
+  {name:'Moab',              state:'UT', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Park City',         state:'UT', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Jackson',           state:'WY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── California ─────────────────────────────────────────────────
+  {name:'Joshua Tree',       state:'CA', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Big Bear',          state:'CA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'South Lake Tahoe',  state:'CA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Mammoth Lakes',     state:'CA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Palm Springs',      state:'CA', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Oakhurst',          state:'CA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Clear Lake',        state:'CA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Pacific Northwest ──────────────────────────────────────────
+  {name:'Bend',              state:'OR', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Leavenworth',       state:'WA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Winthrop',          state:'WA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Idaho ──────────────────────────────────────────────────────
+  {name:"Coeur d'Alene",     state:'ID', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'McCall',            state:'ID', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Mountain West ──────────────────────────────────────────────
+  {name:'Whitefish',         state:'MT', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Taos',              state:'NM', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Santa Fe',          state:'NM', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Angel Fire',        state:'NM', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── South Carolina / Alabama ───────────────────────────────────
+  {name:'Hilton Head',       state:'SC', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Myrtle Beach',      state:'SC', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Spartanburg',       state:'SC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Gulf Shores',       state:'AL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Montgomery',        state:'AL', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Virginia ───────────────────────────────────────────────────
+  {name:'Virginia Beach',      state:'VA', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Luray',               state:'VA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Charlottesville',     state:'VA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Wintergreen Resort',  state:'VA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Shenandoah',          state:'VA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Illinois / Kansas ──────────────────────────────────────────
+  {name:'Peoria',            state:'IL', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Rockford',          state:'IL', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Wichita',           state:'KS', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Kentucky ───────────────────────────────────────────────────
+  {name:'Stanton',           state:'KY', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Georgia / Michigan ─────────────────────────────────────────
+  {name:'Columbus',          state:'GA', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Hazel Park',        state:'MI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Alaska ─────────────────────────────────────────────────────
+  {name:'Fairbanks',         state:'AK', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Oklahoma ───────────────────────────────────────────────────
+  {name:'Broken Bow',        state:'OK', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── North Carolina ─────────────────────────────────────────────
+  {name:'Beech Mountain',    state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Sneads Ferry',      state:'NC', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Florida (additional) ───────────────────────────────────────
+  {name:'Davenport',         state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Tampa',             state:'FL', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  // ── Midwest ────────────────────────────────────────────────────
+  {name:'Branson',           state:'MO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Lake of the Ozarks',state:'MO', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Sister Bay',        state:'WI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Lake Geneva',       state:'WI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Wisconsin Dells',   state:'WI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Baraboo',           state:'WI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Traverse City',     state:'MI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Petoskey',          state:'MI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  {name:'Bellaire',          state:'MI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+  // ── Nevada / Hawaii ────────────────────────────────────────────
+  {name:'Las Vegas',         state:'NV', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Henderson',         state:'NV', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Kihei',             state:'HI', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Kailua Kona',       state:'HI', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Lahaina',           state:'HI', sel:false, pool:true,  isNew:false, minPrice:null, maxPrice:null},
+  {name:'Hilo',              state:'HI', sel:false, pool:false, isNew:false, minPrice:null, maxPrice:null},
+];
+let favorites        = new Set();
+let notes            = {};
+let mktFilter        = 'all';
+let scanning         = false;
+let editingPriceIdx  = -1;
+let _collapsedStates = new Set();  // states the user has manually collapsed
+let lastScanDomFilter = null;      // DOM filter value used in last scan
+
+// ─── DEMO DATA ────────────────────────────────────────────────
+const DEMO = [
+  {id:1,  addr:'377 Ridge Rd',           city:'Divide',          state:'CO',price:485000,beds:4,baths:3,sqft:2200,dom:3, grossYield:13.4,capRate:8.7,airbnbEst:64990,tags:['mountain view','acreage'],isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/CO/Divide/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:2,  addr:'1842 Juniper Canyon Dr', city:'Sedona',          state:'AZ',price:599000,beds:3,baths:2,sqft:1850,dom:7, grossYield:12.1,capRate:7.9,airbnbEst:72480,tags:['red rock views'],      isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/AZ/Sedona/filter/property-type=house',hasPool:true, hoa:true, hoaAmt:180,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:3,  addr:'204 Creekside Ln',       city:'Blue Ridge',      state:'GA',price:325000,beds:3,baths:2,sqft:1600,dom:5, grossYield:11.8,capRate:7.7,airbnbEst:38350,tags:['creek','hot tub'],     isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/GA/Blue-Ridge/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:4,  addr:'88 Bear Den Rd',         city:'Gatlinburg',      state:'TN',price:289000,beds:2,baths:2,sqft:1100,dom:12,grossYield:10.9,capRate:7.1,airbnbEst:31500,tags:['cabin','views'],        isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/TN/Gatlinburg/filter/property-type=house',hasPool:false,hoa:true, hoaAmt:95, propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:5,  addr:'513 Ponderosa Ct',       city:'Divide',          state:'CO',price:415000,beds:3,baths:2,sqft:1920,dom:18,grossYield:10.2,capRate:6.6,airbnbEst:42330,tags:['acreage'],              isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/CO/Divide/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:6,  addr:'9 Redrock Vista Blvd',   city:'Sedona',          state:'AZ',price:540000,beds:4,baths:3,sqft:2050,dom:2, grossYield:9.7, capRate:6.3,airbnbEst:52380,tags:['panoramic views'],     isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/AZ/Sedona/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:7,  addr:'731 Smoky Trail Rd',     city:'Gatlinburg',      state:'TN',price:198000,beds:2,baths:1,sqft:900, dom:21,grossYield:9.4, capRate:6.1,airbnbEst:18610,tags:['cabin'],               isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/TN/Gatlinburg/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:8,  addr:'102 Magnolia Cove Dr',   city:'Blue Ridge',      state:'GA',price:410000,beds:4,baths:3,sqft:2100,dom:9, grossYield:11.2,capRate:7.3,airbnbEst:45920,tags:['hot tub'],             isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/GA/Blue-Ridge/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:9,  addr:'45 Quartz Mountain Rd',  city:'Divide',          state:'CO',price:375000,beds:3,baths:2,sqft:1750,dom:14,grossYield:10.6,capRate:6.9,airbnbEst:39750,tags:['mountain view'],       isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/CO/Divide/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:10, addr:'318 Sunset Bluff Ct',    city:'Sedona',          state:'AZ',price:619000,beds:4,baths:3,sqft:2300,dom:4, grossYield:11.5,capRate:7.5,airbnbEst:71185,tags:['views'],               isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/AZ/Sedona/filter/property-type=house',hasPool:false,hoa:true, hoaAmt:225,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:11, addr:'771 Appalachian Way',    city:'Gatlinburg',      state:'TN',price:265000,beds:3,baths:2,sqft:1350,dom:6, grossYield:10.1,capRate:6.6,airbnbEst:26765,tags:['creek','hot tub'],     isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/TN/Gatlinburg/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:12, addr:'229 Palm Terrace Blvd',  city:'West Palm Beach', state:'FL',price:478000,beds:3,baths:2,sqft:1680,dom:8, grossYield:9.8, capRate:6.4,airbnbEst:46840,tags:['near beach'],          isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/FL/West-Palm-Beach/filter/property-type=house',hasPool:true, hoa:true, hoaAmt:310,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+  {id:13, addr:'88 Coral Isle Dr',       city:'West Palm Beach', state:'FL',price:389000,beds:3,baths:2,sqft:1450,dom:11,grossYield:10.4,capRate:6.8,airbnbEst:40460,tags:['canal view'],          isNew:true, imgSrc:null,detailUrl:'https://www.redfin.com/FL/West-Palm-Beach/filter/property-type=house,condo',hasPool:false,hoa:false,hoaAmt:null,propertyType:'CONDO'},
+  {id:14, addr:'4 Blue Heron Ct',        city:'Blue Ridge',      state:'GA',price:298000,beds:2,baths:2,sqft:1200,dom:16,grossYield:10.7,capRate:7.0,airbnbEst:31890,tags:['cabin','mountain view'],isNew:false,imgSrc:null,detailUrl:'https://www.redfin.com/GA/Blue-Ridge/filter/property-type=house',hasPool:false,hoa:false,hoaAmt:null,propertyType:'SINGLE_FAMILY_RESIDENTIAL'},
+];
+
+// ─── PERSISTENCE ──────────────────────────────────────────────
+// Tracks keys ("Name|STATE") the user explicitly deleted so they don't come back on refresh
+let _deletedKeys = new Set();
+function _loadDeletedKeys() {
+  try { _deletedKeys = new Set(JSON.parse(localStorage.getItem('str_deleted_mkts') || '[]')); } catch(e) {}
+}
+function _saveDeletedKeys() {
+  try { localStorage.setItem('str_deleted_mkts', JSON.stringify([..._deletedKeys])); } catch(e) {}
+}
+
+function saveMarkets() {
+  try { localStorage.setItem('str_markets_v3', JSON.stringify(MARKETS)); } catch(e) {}
+}
+function loadMarkets() {
+  _loadDeletedKeys();
+  try {
+    const s = localStorage.getItem('str_markets_v3') || localStorage.getItem('str_markets_v2') || localStorage.getItem('str_markets');
+    if (s) {
+      const saved = JSON.parse(s);
+      if (Array.isArray(saved) && saved.length > 0) {
+        // Start from the saved list (respects deletions), then append brand-new
+        // code markets the user has never seen before (not deleted, not in saved list).
+        const savedKeys = new Set(saved.map(m => m.name + '|' + m.state));
+        const extra = MARKETS.filter(m => {
+          const k = m.name + '|' + m.state;
+          return !savedKeys.has(k) && !_deletedKeys.has(k);
+        });
+        MARKETS = [
+          ...saved.map(m => ({pool:false, isNew:false, minPrice:null, maxPrice:null, ...m})),
+          ...extra,
+        ];
+        return;
+      }
+    }
+  } catch(e) {}
+  // No saved data — use master list minus any previously deleted keys
+  MARKETS = MARKETS.filter(m => !_deletedKeys.has(m.name + '|' + m.state));
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+async function init() {
+  loadMarkets();
+  renderMarkets();
+  updateSchedMkts();
+  PROPS = DEMO.map(p => ({...p}));
+  renderResults();
+  buildChips();
+  await checkBackend();
+}
+
+// ─── BACKEND ──────────────────────────────────────────────────
+async function checkBackend() {
+  try {
+    const r = await fetch(`${BACKEND}/health`, { signal: AbortSignal.timeout(3000) });
+    backendOnline = r.ok;
+  } catch { backendOnline = false; }
+  updateBackendUI();
+}
+function updateBackendUI() {
+  document.getElementById('live-tag').style.display       = backendOnline ? 'inline-flex' : 'none';
+  document.getElementById('demo-tag').style.display       = backendOnline ? 'none'        : 'inline-flex';
+  document.getElementById('backend-banner').style.display = backendOnline ? 'none'        : 'flex';
+  const pill = document.getElementById('backend-status-pill');
+  if (pill) {
+    pill.textContent      = backendOnline ? '● online' : '● offline';
+    pill.style.background = backendOnline ? 'var(--gr-bg)' : 'var(--rd-bg)';
+    pill.style.color      = backendOnline ? 'var(--gr)'    : 'var(--rd)';
+  }
+}
+
+// ─── TABS ─────────────────────────────────────────────────────
+function switchTab(name) {
+  const names = ['markets','results','map','toppicks','favorites','schedules'];
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if (name==='results')   { buildChips(); renderResults(); }
+  if (name==='favorites') renderFavorites();
+  if (name==='map')       { renderMap(); }
+}
+
+// ─── SORT ─────────────────────────────────────────────────────
+function setSort(mode, el) {
+  sortMode = mode;
+  document.querySelectorAll('.sp').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderResults();
+}
+
+// ─── MARKET ZIP CODES (mirrors backend MARKET_ZIPS) ──────────
+const MARKET_ZIPS = {
+  'Divide':'80814','Breckenridge':'80424','Telluride':'81435','Vail':'81657',
+  'Aspen':'81611','Steamboat Springs':'80487','Estes Park':'80517',
+  'Crested Butte':'81224','Durango':'81301','Woodland Park':'80863',
+  'Cascade':'80809','Westminster':'80031','Sedona':'86336','Scottsdale':'85251',
+  'Flagstaff':'86001','Prescott':'86301','Mesa':'85201','Tempe':'85281',
+  'Chandler':'85224','Gilbert':'85234','Glendale':'85301','Tucson':'85701',
+  'Gatlinburg':'37738','Pigeon Forge':'37863','Sevierville':'37862',
+  'Townsend':'37882','Cosby':'37722','Hot Springs':'71901',
+  'Blue Ridge':'30513','Helen':'30545','Dahlonega':'30533',
+  'Savannah':'31401','Tybee Island':'31328','West Palm Beach':'33401',
+  'Destin':'32541','Panama City Beach':'32407','Kissimmee':'34741',
+  'Naples':'34102','Sarasota':'34230','Cape Coral':'33990',
+  'Fort Myers':'33901','Clearwater':'33755','St. Pete Beach':'33706',
+  'St. Augustine':'32084','Marco Island':'34145','Anna Maria':'34216',
+  'Siesta Key':'34242','Key West':'33040','Orlando':'32801',
+  'Boca Raton':'33432','Fort Lauderdale':'33301','Daytona Beach':'32114',
+  'Jacksonville Beach':'32250','Bradenton':'34205','Fort Walton Beach':'32548',
+  'Cocoa Beach':'32931','Miami Beach':'33139','Boynton Beach':'33435',
+  'Delray Beach':'33444','Asheville':'28801','Boone':'28607',
+  'Brevard':'28712','Bryson City':'28713','Cashiers':'28717',
+  'Highlands':'28741','Hendersonville':'28792','Cherokee':'28719',
+  'Lake Norman':'28036','Hunter':'12442','Windham':'12496',
+  'Lake Placid':'12946','Ellicottville':'14731','Pocono Mountains':'18325',
+  'Hershey':'17033','Conway':'03818','Bartlett':'03812','Gilford':'03249',
+  'Bethel':'04217','Newry':'04261','Great Barrington':'01230','Jay':'05859',
+  'Red River Gorge':'40353','Indianapolis':'46201','South Bend':'46601','Fort Wayne':'46802',
+  'Logan':'43138','Columbus':'43215','Cincinnati':'45202','Akron':'44308',
+  'Peoria':'61602','Rockford':'61101','Wichita':'67202',
+  'Stanton':'40380','Columbus GA':'31901','Hazel Park':'48030',
+  'Fairbanks':'99701','Broken Bow':'74728',
+  'Beech Mountain':'28604','Sneads Ferry':'28460',
+  'Davenport':'33837','Tampa':'33602',
+  'Spartanburg':'29301','Montgomery':'36104',
+  'Austin':'78701','Lake Travis':'78734','San Antonio':'78201',
+  'Fredericksburg':'78624','Wimberley':'78676','New Braunfels':'78130',
+  'South Padre Island':'78597','Waco':'76701','Richardson':'75080',
+  'Grand Prairie':'75050','Irving':'75061','Abilene':'79601','Amarillo':'79101',
+  'Moab':'84532','Park City':'84060','Jackson':'83001',
+  'Joshua Tree':'92252','Big Bear':'92315','South Lake Tahoe':'96150',
+  'Mammoth Lakes':'93546','Palm Springs':'92262','Oakhurst':'93644',
+  'Clear Lake':'95422','Bend':'97701','Leavenworth':'98826','Winthrop':'98862',
+  "Coeur d'Alene":'83814','McCall':'83638','Whitefish':'59937',
+  'Taos':'87571','Santa Fe':'87501','Angel Fire':'87710',
+  'Hilton Head':'29928','Myrtle Beach':'29577','Gulf Shores':'36542',
+  'Virginia Beach':'23451','Luray':'22835','Charlottesville':'22902',
+  'Wintergreen Resort':'22958','Shenandoah':'22849','Branson':'65616',
+  'Lake of the Ozarks':'65049','Sister Bay':'54234','Lake Geneva':'53147',
+  'Wisconsin Dells':'53965','Baraboo':'53913','Traverse City':'49684',
+  'Petoskey':'49770','Bellaire':'49615','Las Vegas':'89101','Henderson':'89002',
+  'Kihei':'96753','Kailua Kona':'96740','Lahaina':'96761','Hilo':'96720',
+};
+
+// ─── LISTING URL HELPER ───────────────────────────────────────
+// Returns the best URL for a property:
+//   1. Real listing URL from scraper (contains /home/) → use directly
+//   2. Any other valid non-homepage URL → use directly
+//   3. Fallback: zip-code market search (same URLs the scanner uses — guaranteed to work)
+function _listingUrl(p) {
+  const url = p.detailUrl || '';
+  if (url.includes('/home/')) return url;
+  if (url.includes('/zipcode/')) return url;
+  if (url.startsWith('http') && !url.match(/redfin\.com\/?$/)) return url;
+  // Use zip-based market URL — identical format to what the scanner scans
+  const zip = MARKET_ZIPS[p.city];
+  if (zip) return `https://www.redfin.com/zipcode/${zip}/filter/property-type=house,condo,townhouse`;
+  const slug = (p.city || '').replace(/\s+/g, '-').replace(/[.']/g, '');
+  return `https://www.redfin.com/${p.state}/${slug}/filter/property-type=house,condo,townhouse`;
+}
+
+// ─── PRICE FORMAT HELPER ──────────────────────────────────────
+function fmtPrice(v) {
+  if (v == null || v === '') return '—';
+  const n = +v;
+  return n >= 1000 ? '$' + Math.round(n / 1000) + 'k' : '$' + n;
+}
+
+// ─── MARKETS ──────────────────────────────────────────────────
+const STATE_NAMES = {
+  AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',
+  CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',
+  HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',
+  KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',
+  MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',
+  NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',
+  NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',
+  OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',
+  SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',
+  VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',
+};
+
+function _mktCardHTML(m, i) {
+  const hasCustomPrice = m.minPrice != null || m.maxPrice != null;
+  const priceLabel = hasCustomPrice
+    ? `${fmtPrice(m.minPrice)} – ${fmtPrice(m.maxPrice)}`
+    : 'global price';
+  const priceSection = editingPriceIdx === i ? `
+    <div class="mcard-price-edit">
+      <div class="mcard-price-inputs">
+        <input type="number" id="mp-min-${i}" value="${m.minPrice ?? ''}" placeholder="min" step="10000"
+          onkeydown="if(event.key==='Enter')saveMktPrice(${i})">
+        <span class="mcard-price-sep">–</span>
+        <input type="number" id="mp-max-${i}" value="${m.maxPrice ?? ''}" placeholder="max" step="10000"
+          onkeydown="if(event.key==='Enter')saveMktPrice(${i})">
+      </div>
+      <div class="mcard-price-actions">
+        <button class="mpbtn save" onclick="saveMktPrice(${i})">save</button>
+        <button class="mpbtn" onclick="clearMktPrice(${i})">global</button>
+        <button class="mpbtn" onclick="editMktPrice(-1)">✕</button>
+      </div>
+    </div>` : `
+    <div class="mcard-price ${hasCustomPrice ? 'custom' : ''}" onclick="editMktPrice(${i})">
+      <span>${priceLabel}</span>
+      <span class="mcard-price-icon">✎</span>
+    </div>`;
+  return `
+  <div class="mcard ${m.sel?'sel':''} ${m.isNew?'hl':''}">
+    <div class="mcard-top">
+      <div class="mcard-info" onclick="toggleMkt(${i})">
+        <div class="mname">${m.name}</div>
+      </div>
+      <button class="del-btn" onclick="deleteMkt(${i})" title="Remove">×</button>
+    </div>
+    <div class="mcard-bot">
+      <button class="pool-btn ${m.pool?'on':''}" onclick="toggleMktPool(${i})">
+        ≋ ${m.pool?'pool on':'pool off'}
+      </button>
+      <div class="chk" onclick="toggleMkt(${i})">
+        <svg viewBox="0 0 8 8" fill="none" stroke="white" stroke-width="1.5"><polyline points="1,4 3,6 7,2"/></svg>
+      </div>
+    </div>
+    ${priceSection}
+  </div>`;
+}
+
+function renderMarkets() {
+  // Build ordered groups preserving the original MARKETS indices
+  const groups = {};   // state -> [{m, i}]
+  const order  = [];   // state insertion order
+  MARKETS.forEach((m, i) => {
+    if (!groups[m.state]) { groups[m.state] = []; order.push(m.state); }
+    groups[m.state].push({m, i});
+  });
+
+  // Default: collapse groups with no selections, keep selected-containing groups open
+  // But respect manual overrides in _collapsedStates
+  document.getElementById('mgrid').innerHTML = order.map(state => {
+    const entries   = groups[state];
+    const selCount  = entries.filter(e => e.m.sel).length;
+    const allSel    = selCount === entries.length;
+    const stateName = STATE_NAMES[state] || state;
+    const cards     = entries.map(({m, i}) => _mktCardHTML(m, i)).join('');
+    // Collapsed if: in the collapsed set, OR no selections AND not in a force-expanded set
+    const isCollapsed = _collapsedStates.has(state) || (selCount === 0 && !_expandedStates.has(state));
+    const selIndic = selCount > 0
+      ? `<span class="mgroup-sel-indicator">●&thinsp;${selCount}</span>`
+      : '';
+    return `
+    <div class="mgroup${isCollapsed?' collapsed':''}" id="mg-${state}">
+      <div class="mgroup-header" onclick="toggleGroup('${state}')">
+        <span class="mgroup-chevron">▾</span>
+        <span class="mgroup-state">${stateName}</span>
+        ${selIndic}
+        <span class="mgroup-count" style="margin-left:4px">${entries.length} markets</span>
+        <button class="mgroup-sel-btn" onclick="event.stopPropagation();toggleStateAll('${state}')">
+          ${allSel ? 'deselect all' : 'select all'}
+        </button>
+      </div>
+      <div class="mgroup-body">
+        <div class="mgroup-grid">${cards}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Update controls bar
+  const totalSel = MARKETS.filter(m=>m.sel).length;
+  const totalMkts = MARKETS.length;
+  const ctrlCount = document.getElementById('mkt-sel-count');
+  if (ctrlCount) ctrlCount.textContent = `${totalSel} selected`;
+  const ctrlSub = document.getElementById('mkt-sel-sub');
+  if (ctrlSub) ctrlSub.textContent = ` of ${totalMkts} markets`;
+}
+
+// Track states the user has manually forced open (overrides auto-collapse)
+const _expandedStates = new Set();
+
+function toggleGroup(state) {
+  if (_collapsedStates.has(state)) {
+    _collapsedStates.delete(state);
+    _expandedStates.add(state);
+  } else {
+    _collapsedStates.add(state);
+    _expandedStates.delete(state);
+  }
+  // Apply immediately without re-rendering everything (perf)
+  const grp = document.getElementById('mg-'+state);
+  if (grp) grp.classList.toggle('collapsed');
+  // Update chevron + indicator via re-render is cheap enough here
+  renderMarkets();
+}
+
+function expandAllGroups() {
+  _collapsedStates.clear();
+  MARKETS.forEach(m => _expandedStates.add(m.state));
+  renderMarkets();
+}
+
+function collapseAllGroups() {
+  _expandedStates.clear();
+  MARKETS.forEach(m => _collapsedStates.add(m.state));
+  renderMarkets();
+}
+
+function toggleStateAll(state) {
+  const entries = MARKETS.map((m,i)=>({m,i})).filter(e=>e.m.state===state);
+  const allSel  = entries.every(e=>e.m.sel);
+  entries.forEach(e => { MARKETS[e.i].sel = !allSel; });
+  saveMarkets(); renderMarkets(); updateSchedMkts();
+}
+
+// ─── PER-MARKET PRICE ─────────────────────────────────────────
+function editMktPrice(i) {
+  editingPriceIdx = i;
+  renderMarkets();
+  if (i >= 0) {
+    setTimeout(() => {
+      const el = document.getElementById(`mp-min-${i}`);
+      if (el) el.focus();
+    }, 40);
+  }
+}
+function saveMktPrice(i) {
+  const minEl = document.getElementById(`mp-min-${i}`);
+  const maxEl = document.getElementById(`mp-max-${i}`);
+  MARKETS[i].minPrice = minEl && minEl.value ? +minEl.value : null;
+  MARKETS[i].maxPrice = maxEl && maxEl.value ? +maxEl.value : null;
+  editingPriceIdx = -1;
+  saveMarkets(); renderMarkets();
+  const m = MARKETS[i];
+  toast(m.minPrice != null || m.maxPrice != null
+    ? `${m.name}: ${fmtPrice(m.minPrice)} – ${fmtPrice(m.maxPrice)}`
+    : `${m.name}: using global price`);
+}
+function clearMktPrice(i) {
+  MARKETS[i].minPrice = null;
+  MARKETS[i].maxPrice = null;
+  editingPriceIdx = -1;
+  saveMarkets(); renderMarkets();
+  toast(`${MARKETS[i].name}: using global price`);
+}
+
+function toggleMkt(i) {
+  MARKETS[i].sel = !MARKETS[i].sel;
+  saveMarkets(); renderMarkets(); updateSchedMkts();
+  toast(`${MARKETS[i].name} ${MARKETS[i].sel?'added to':'removed from'} scan`);
+}
+function toggleMktPool(i) {
+  MARKETS[i].pool = !MARKETS[i].pool;
+  saveMarkets(); renderMarkets();
+  toast(`${MARKETS[i].name}: pool filter ${MARKETS[i].pool?'on':'off'}`);
+}
+function deleteMkt(i) {
+  const m = MARKETS[i];
+  _deletedKeys.add(m.name + '|' + m.state);
+  _saveDeletedKeys();
+  MARKETS.splice(i, 1);
+  saveMarkets(); renderMarkets(); updateSchedMkts();
+  toast(`${m.name} removed`);
+}
+function updateSchedMkts() {
+  document.getElementById('sched-mkts').textContent =
+    MARKETS.filter(m=>m.sel).map(m=>`${m.name} ${m.state}`).join(' · ') || 'No markets selected';
+}
+
+// ─── MARKET MODAL ─────────────────────────────────────────────
+function openModal() {
+  document.getElementById('backdrop').classList.add('open');
+  document.getElementById('mkt-input').value = '';
+  renderSugs(MKT_SUGGESTIONS.slice(0,8));
+  setTimeout(() => document.getElementById('mkt-input').focus(), 150);
+}
+function closeModal(e) {
+  if (!e || e.target===document.getElementById('backdrop'))
+    document.getElementById('backdrop').classList.remove('open');
+}
+function renderSugs(list) {
+  document.getElementById('sugs').innerHTML =
+    list.map(s=>`<span class="sug" onclick="document.getElementById('mkt-input').value='${s}'">${s}</span>`).join('');
+}
+function filterSugs() {
+  const q = document.getElementById('mkt-input').value.toLowerCase();
+  renderSugs(q ? MKT_SUGGESTIONS.filter(s=>s.toLowerCase().includes(q)) : MKT_SUGGESTIONS.slice(0,8));
+}
+function confirmMkt() {
+  const val = document.getElementById('mkt-input').value.trim();
+  if (!val) return;
+  const [name, state=''] = val.split(',').map(s=>s.trim());
+  if (MARKETS.find(m=>m.name.toLowerCase()===name.toLowerCase())) { toast('Market already in list'); return; }
+  // Allow re-adding a previously deleted market
+  _deletedKeys.delete(name + '|' + state);
+  _saveDeletedKeys();
+  MARKETS.push({name, state, sel:true, pool:false, isNew:true, minPrice:null, maxPrice:null});
+  saveMarkets(); renderMarkets(); updateSchedMkts(); closeModal();
+  toast(`${name}${state?', '+state:''} added ✦`, true);
+}
+
+// ─── LIVE REFILTER (criteria inputs changed) ──────────────────
+let _refilterTimer = null;
+function liveRefilter() {
+  if (!PROPS.length) return;
+  if (_refilterTimer) clearTimeout(_refilterTimer);
+  _refilterTimer = setTimeout(() => {
+    buildChips();
+    renderResults();
+    _refilterTimer = null;
+  }, 160);
+}
+
+// ─── DOM FILTER ────────────────────────────────────────────────
+function setDom(days, el) {
+  domFilter = days;
+  document.querySelectorAll('.pill').forEach(p => {
+    if (p.onclick && p.onclick.toString().includes('setDom')) p.classList.remove('active');
+  });
+  el.classList.add('active');
+  // Re-filter cached results immediately
+  buildChips(); renderResults();
+  // If widening beyond the last scan's range, warn the user they need to re-scan
+  const warn = document.getElementById('dom-rescan-warn');
+  if (warn) {
+    const needRescan = lastScanDomFilter !== null && days > lastScanDomFilter && PROPS.length > 0;
+    warn.style.display = needRescan ? 'flex' : 'none';
+  }
+}
+
+// ─── FETCH ────────────────────────────────────────────────────
+// Returns the set of allowed home-type codes based on active pills.
+// 1 = house/single-family/cabin  2 = condo  3 = townhouse/multi-family
+const HOME_TYPE_MAP = {
+  'Single family':    ['1'],
+  'Cabin / cottage':  ['1'],
+  'Multi-family':     ['3'],
+  'Condo / townhome': ['2'],
+};
+// Redfin property types that map to each code (used for client-side guard)
+const CONDO_PROP_TYPES     = new Set(['CONDO','CONDO_TOWNHOUSE']);
+const TOWNHOUSE_PROP_TYPES = new Set(['TOWNHOUSE','MULTI_FAMILY_RESIDENTIAL','MULTI_FAMILY']);
+
+function getHomeTypeCodes() {
+  const codes = new Set();
+  document.querySelectorAll('.pill').forEach(el => {
+    const label = el.textContent.trim();
+    if (HOME_TYPE_MAP[label]) {
+      if (el.classList.contains('active')) {
+        HOME_TYPE_MAP[label].forEach(c => codes.add(c));
+      }
+    }
+  });
+  return codes.size ? [...codes].join(',') : '1';
+}
+async function fetchMkt(mkt, criteria) {
+  const p = new URLSearchParams({
+    location:   `${mkt.name}, ${mkt.state}`,
+    min_price:  mkt.minPrice != null ? mkt.minPrice : criteria.priceMin,
+    max_price:  mkt.maxPrice != null ? mkt.maxPrice : criteria.priceMax,
+    min_beds:   criteria.bedsMin,
+    max_beds:   criteria.bedsMax,
+    min_baths:  criteria.bathsMin,
+    max_dom:    domFilter,
+    min_yield:  criteria.yieldMin || 0,
+    keywords:   criteria.keywords.join(','),
+    home_types: getHomeTypeCodes(),
+    pool:       mkt.pool || false,
+  });
+  if (criteria.sqftMin > 0)    p.set('min_sqft', criteria.sqftMin);
+  if (criteria.sqftMax < 9999) p.set('max_sqft', criteria.sqftMax);
+  const resp = await fetch(`${BACKEND}/api/redfin?${p}`);
+  if (!resp.ok) {
+    const e = await resp.json().catch(()=>({}));
+    throw new Error(e.error || `Backend ${resp.status}`);
+  }
+  return await resp.json();
+}
+
+// ─── CRITERIA ─────────────────────────────────────────────────
+function getCriteria() {
+  return {
+    priceMin: +document.getElementById('c-pmin').value  || 0,
+    priceMax: +document.getElementById('c-pmax').value  || 9999999,
+    bedsMin:  +document.getElementById('c-bmin').value  || 0,
+    bedsMax:  +document.getElementById('c-bmax').value  || 99,
+    bathsMin: +document.getElementById('c-baMin').value || 0,
+    yieldMin: +document.getElementById('c-ymin').value  || 0,
+    sqftMin:  +document.getElementById('c-smin').value  || 0,
+    sqftMax:  +document.getElementById('c-smax').value  || 99999,
+    keywords: document.getElementById('c-kw').value.toLowerCase()
+      .split(',').map(k=>k.trim()).filter(Boolean),
+  };
+}
+
+// ─── RUN SCAN ─────────────────────────────────────────────────
+async function runScan() {
+  const selected = MARKETS.filter(m=>m.sel);
+  if (!selected.length) { toast('Select at least one market first'); return; }
+  if (scanning) return;
+  scanning = true;
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true; btn.textContent = '◌ Scanning…';
+  const prog = document.getElementById('scan-prog');
+  const txt  = document.getElementById('scan-txt');
+  const bdgs = document.getElementById('mkt-badges');
+  prog.classList.add('show');
+  bdgs.innerHTML = selected.map(m=>`<span class="mb" id="mb-${m.name.replace(/\s/g,'_')}">${m.name}</span>`).join('');
+
+  const criteria = getCriteria();
+  const allProps = [], errors = [];
+
+  if (!backendOnline) {
+    txt.textContent = 'Backend offline — loading demo data…';
+    selected.forEach(m => {
+      const b = document.getElementById('mb-'+m.name.replace(/\s/g,'_'));
+      if (b) b.className = 'mb loading';
+    });
+    await new Promise(r=>setTimeout(r,600));
+    PROPS = DEMO.filter(p => selected.some(m=>m.name===p.city)).map(p=>({...p}));
+    selected.forEach(m => {
+      const b = document.getElementById('mb-'+m.name.replace(/\s/g,'_'));
+      const cnt = PROPS.filter(p=>p.city===m.name).length;
+      if (b) { b.className = 'mb done'; b.textContent = `${m.name} (${cnt})`; }
+    });
+  } else {
+    // ── Scan markets in rolling batches of 4 ──────────────────────
+    // Sending all at once overwhelms the backend semaphore queue and the
+    // network — batching keeps throughput high without starvation.
+    const BATCH = 4;
+    txt.textContent = `Scanning ${selected.length} market${selected.length!==1?'s':''} (${BATCH} at a time)…`;
+    selected.forEach(mkt => {
+      const b = document.getElementById('mb-'+mkt.name.replace(/\s/g,'_'));
+      if (b) b.className = 'mb loading';
+    });
+
+    const allResults = [];
+    for (let i = 0; i < selected.length; i += BATCH) {
+      const batch = selected.slice(i, i + BATCH);
+      const done  = i + batch.length;
+      txt.textContent = `Scanning ${done}/${selected.length} markets…`;
+      const batchResults = await Promise.allSettled(
+        batch.map(mkt => fetchMkt(mkt, criteria).then(props => ({ mkt, props })))
+      );
+      allResults.push(...batchResults);
+      // Update badges for this batch immediately
+      batchResults.forEach((r, bi) => {
+        const mkt = batch[bi];
+        const b = document.getElementById('mb-'+mkt.name.replace(/\s/g,'_'));
+        if (r.status === 'fulfilled') {
+          if (b) { b.className = 'mb done'; b.textContent = `${mkt.name} (${r.value.props.length})`; }
+        } else {
+          if (b) { b.className = 'mb error'; b.textContent = `${mkt.name} ✕`; }
+        }
+      });
+    }
+    const results = allResults;
+
+    results.forEach((r, idx) => {
+      const mkt   = r.status === 'fulfilled' ? r.value.mkt   : allResults[idx] && allResults[idx].reason?._mkt;
+      const props = r.status === 'fulfilled' ? r.value.props  : [];
+      if (r.status === 'fulfilled') {
+        allProps.push(...props);
+      } else {
+        const errMkt = r.reason?._mkt?.name || `market ${idx+1}`;
+        errors.push(`${errMkt}: ${r.reason?.message || 'Unknown error'}`);
+        console.error(r.reason);
+      }
+    });
+
+    PROPS = allProps;
+  }
+
+  lastScanDomFilter = domFilter;  // record what range this scan covered
+  const warn = document.getElementById('dom-rescan-warn');
+  if (warn) warn.style.display = 'none';  // fresh scan — no warning needed
+  txt.textContent = `Done — ${PROPS.length} propert${PROPS.length===1?'y':'ies'} found`;
+  await new Promise(r=>setTimeout(r,700));
+  prog.classList.remove('show');
+  btn.disabled = false; btn.textContent = '▶ Run scan now';
+  scanning = false;
+
+  const now = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('last-run').textContent = `last run: ${now}`;
+  document.getElementById('sched-hist').textContent = `just now · ${PROPS.length} results`;
+  if (errors.length) errors.forEach(e => toast(`⚠ ${e}`));
+
+  mktFilter = 'all';
+  // Refresh map badge count if map was already initialized
+  const mapBadge = document.getElementById('map-badge');
+  if (mapBadge) mapBadge.textContent = PROPS.length || '—';
+  // If map was previously opened, refresh its markers in the background
+  if (mapInitialized) renderMap();
+  switchTab('results');
+  toast(`Scan complete — ${PROPS.length} propert${PROPS.length===1?'y':'ies'} found ✦`, true);
+}
+
+// ─── FILTERING ────────────────────────────────────────────────
+// Pre-built market lookup map for O(1) access instead of O(n) find() per property
+function _getMktMap() {
+  const m = {};
+  MARKETS.forEach(mk => { m[mk.name] = mk; });
+  return m;
+}
+
+function matches(p, c, activeCodes, mktMap) {
+  // Per-market price range (falls back to global)
+  const mkt = mktMap ? mktMap[p.city] : MARKETS.find(m => m.name === p.city);
+  const priceMin = (mkt && mkt.minPrice != null) ? mkt.minPrice : c.priceMin;
+  const priceMax = (mkt && mkt.maxPrice != null) ? mkt.maxPrice : c.priceMax;
+  if (p.price < priceMin || p.price > priceMax) return false;
+
+  if (p.beds  < c.bedsMin  || p.beds  > c.bedsMax)  return false;
+  if (c.bathsMin > 1 && p.baths > 0 && p.baths < c.bathsMin) return false;
+  if (c.yieldMin > 0 && p.grossYield > 0 && p.grossYield < c.yieldMin) return false;
+  if (p.dom >= 0 && p.dom > domFilter) return false;
+  if (p.dom === -1 && domFilter <= 7)  return false;
+  if (p.sqft > 0 && (p.sqft < c.sqftMin || p.sqft > c.sqftMax)) return false;
+
+  if (mkt && mkt.pool && p.hasPool === false) return false;
+
+  // activeCodes pre-computed by caller — no DOM query per property
+  const codes = activeCodes || new Set(getHomeTypeCodes().split(','));
+  const pt = (p.propertyType || '').toUpperCase();
+  if (CONDO_PROP_TYPES.has(pt)     && !codes.has('2')) return false;
+  if (TOWNHOUSE_PROP_TYPES.has(pt) && !codes.has('3')) return false;
+
+  if (c.keywords.length) {
+    const hay = (p.addr+' '+p.city+' '+p.state+' '+(p.tags||[]).join(' ')).toLowerCase();
+    if (!c.keywords.every(k=>hay.includes(k))) return false;
+  }
+  return true;
+}
+function getFiltered() {
+  const c          = getCriteria();
+  const activeCodes = new Set(getHomeTypeCodes().split(','));  // computed ONCE
+  const mktMap     = _getMktMap();                             // computed ONCE
+  const selNames   = new Set(MARKETS.filter(m=>m.sel).map(m=>m.name));
+  const cfs        = getCFSettings();                          // computed ONCE
+
+  let ps = PROPS.filter(p => selNames.has(p.city) && matches(p, c, activeCodes, mktMap));
+  if (mktFilter !== 'all') ps = ps.filter(p => p.city === mktFilter);
+
+  // Pre-compute CF for all props once if sorting by cash flow (avoids O(n log n) recalculations)
+  if (sortMode === 'cf-desc') {
+    const cfCache = new Map(ps.map(p => [p.id, calcFinancials(p, cfs).netMonthly]));
+    ps.sort((a,b) => cfCache.get(b.id) - cfCache.get(a.id));
+  } else {
+    ps.sort((a,b) => {
+      if (sortMode==='price-asc')  return a.price - b.price;
+      if (sortMode==='price-desc') return b.price - a.price;
+      if (sortMode==='yield-desc') return b.grossYield - a.grossYield;
+      if (sortMode==='dom-asc')    return a.dom - b.dom;
+      return 0;
+    });
+  }
+  return ps;
+}
+
+// ─── CHIPS ────────────────────────────────────────────────────
+function buildChips() {
+  const c          = getCriteria();
+  const activeCodes = new Set(getHomeTypeCodes().split(','));
+  const mktMap     = _getMktMap();
+  const selNames   = new Set(MARKETS.filter(m=>m.sel).map(m=>m.name));
+  const counts = {};
+  PROPS.filter(p => selNames.has(p.city) && matches(p, c, activeCodes, mktMap))
+       .forEach(p => { counts[p.city] = (counts[p.city]||0)+1; });
+  const total = Object.values(counts).reduce((s,n)=>s+n,0);
+  document.getElementById('mchips').innerHTML =
+    `<span class="mchip ${mktFilter==='all'?'active':''}" onclick="setMktFilter('all')">All (${total})</span>` +
+    Object.entries(counts).map(([city,n])=>
+      `<span class="mchip ${mktFilter===city?'active':''}" onclick="setMktFilter('${city}')">${city} (${n})</span>`
+    ).join('');
+}
+function setMktFilter(city) { mktFilter=city; buildChips(); renderResults(); }
+
+// ─── RENDER ───────────────────────────────────────────────────
+function renderResults() {
+  const ps   = getFiltered();
+  const list = document.getElementById('plist');
+  const norez= document.getElementById('norez');
+  const foot = document.getElementById('footer-note');
+
+  document.getElementById('m-cnt').textContent     = ps.length;
+  document.getElementById('res-badge').textContent  = ps.length;
+
+  if (ps.length) {
+    const newCnt = ps.filter(p=>p.isNew).length;
+    const mn = document.getElementById('m-new');
+    mn.textContent = newCnt>0 ? `+${newCnt} new today` : '';
+    mn.className = 'met-s'+(newCnt>0?' up':'');
+    document.getElementById('m-price').textContent =
+      '$'+Math.round(ps.reduce((s,p)=>s+p.price,0)/ps.length/1000)+'k';
+    const yps = ps.filter(p=>p.grossYield>0);
+    document.getElementById('m-yield').textContent =
+      yps.length ? (yps.reduce((s,p)=>s+p.grossYield,0)/yps.length).toFixed(1)+'%' : '—';
+    // DOM average — exclude unknown (-1) values
+    const domPs = ps.filter(p => p.dom >= 0);
+    const domAvg = domPs.length ? Math.round(domPs.reduce((s,p)=>s+p.dom,0)/domPs.length) : null;
+    document.getElementById('m-dom').textContent = domAvg !== null ? domAvg+'d' : '—';
+    const mc = new Set(ps.map(p=>p.city)).size;
+    document.getElementById('m-price-s').textContent = `across ${mc} market${mc!==1?'s':''}`;
+  }
+
+  const poolMkts = MARKETS.filter(m=>m.sel&&m.pool).map(m=>m.name);
+  document.getElementById('res-label').textContent =
+    `${ps.length} propert${ps.length===1?'y':'ies'}${mktFilter!=='all'?' · '+mktFilter:''}` +
+    (poolMkts.length ? ` · pool: ${poolMkts.join(', ')}` : '');
+
+  if (!ps.length) {
+    list.innerHTML=''; norez.style.display='block'; foot.style.display='none'; return;
+  }
+  norez.style.display='none'; foot.style.display='block';
+  foot.textContent = backendOnline
+    ? `Live data · ${new Set(ps.map(p=>p.city)).size} markets · Redfin via ${location.hostname}`
+    : `Demo data · start the FastAPI backend for live Redfin listings`;
+
+  const _cfS = getCFSettings();
+  list.innerHTML = ps.map(p=>cardHTML(p, _cfS)).join('');
+}
+
+// ─── CASH FLOW ENGINE ─────────────────────────────────────────
+function getCFSettings() {
+  return {
+    downPct:   (+document.getElementById('cf-down')?.value || 20) / 100,
+    rate:      (+document.getElementById('cf-rate')?.value || 7.25) / 100,
+    occupancy: (+document.getElementById('cf-occ')?.value  || 65) / 100,
+    mgmtPct:   (+document.getElementById('cf-mgmt')?.value || 20) / 100,
+  };
+}
+
+function calcFinancials(p, s) {
+  const price   = p.price || 0;
+  const downAmt = Math.round(price * s.downPct);
+  const loan    = price - downAmt;
+  const mo      = s.rate / 12;
+  const n       = 360;  // 30-year fixed
+
+  // Monthly P&I
+  const monthlyMortgage = (mo > 0 && loan > 0)
+    ? Math.round(loan * mo * Math.pow(1+mo,n) / (Math.pow(1+mo,n)-1))
+    : 0;
+
+  // Revenue — airbnbEst was built at 65% occupancy; scale linearly
+  const annualRevenue = p.airbnbEst > 0
+    ? Math.round(p.airbnbEst * (s.occupancy / 0.65))
+    : 0;
+
+  // Operating expenses
+  const expMgmt    = Math.round(annualRevenue * s.mgmtPct);
+  const expClean   = Math.round((p.beds || 2) * 110 * 52);  // ~$110/clean × 52 turns/yr
+  const expInsure  = Math.round(price * 0.0085);            // ~0.85% of price
+  const expTax     = Math.round(price * 0.012);             // ~1.2% of price
+  const expMaint   = Math.round(price * 0.01);              // ~1% of price (CapEx reserve)
+  const expHOA     = p.hoa && p.hoaAmt ? p.hoaAmt * 12 : 0;
+  const annualExp  = expMgmt + expClean + expInsure + expTax + expMaint + expHOA;
+
+  const annualMortgage  = monthlyMortgage * 12;
+  const netAnnual       = annualRevenue - annualExp - annualMortgage;
+  const netMonthly      = Math.round(netAnnual / 12);
+  const cocReturn       = downAmt > 0 ? +(netAnnual / downAmt * 100).toFixed(1) : 0;
+
+  return {
+    downAmt, monthlyMortgage, annualRevenue, annualExp, annualMortgage,
+    netMonthly, netAnnual, cocReturn,
+    expMgmt, expClean, expInsure, expTax, expMaint, expHOA,
+  };
+}
+
+// ─── CARD ─────────────────────────────────────────────────────
+function cardHTML(p, cfS) {
+  const ppsf   = p.sqft>0 ? Math.round(p.price/p.sqft) : 0;
+  const isFav  = favorites.has(p.id);
+  const tags   = p.tags || [];
+  const cf     = calcFinancials(p, cfS || getCFSettings());
+  const isHigh = p.grossYield >= 10;
+  const isMed  = p.grossYield >= 8 && p.grossYield < 10;
+
+  const yieldClass = isHigh ? 'yield-hi' : isMed ? 'yield-md' : '';
+  const heroClass  = isHigh ? 'hi' : isMed ? 'md' : '';
+
+  const thumb = p.imgSrc
+    ? `<img src="${p.imgSrc}" alt="" onerror="this.parentElement.innerHTML='<div class=pphoto-ph><span>⌂</span><span class=pphoto-ph-sub>no photo</span></div>'">`
+    : `<div class="pphoto-ph"><span>⌂</span><span class="pphoto-ph-sub">no photo</span></div>`;
+
+  // DOM label — -1 means unknown (backend couldn't determine it)
+  const domLabel = p.dom < 0
+    ? '— days'
+    : p.dom === 0
+      ? 'listed today'
+      : `${p.dom}d on market`;
+
+  // DOM badge on photo — only show if known
+  const domBadge = p.dom >= 0
+    ? `<div class="dom-badge">${p.dom === 0 ? 'listed today' : p.dom+'d on mkt'}</div>`
+    : '';
+
+  const hoaBadge = p.hoa
+    ? `<span class="tag a">HOA ${p.hoaAmt?'$'+p.hoaAmt+'/mo':'yes'}</span>`
+    : `<span class="tag g">no HOA</span>`;
+
+  const featureTags = [
+    (p.hasPool||tags.includes('pool')) ? '<span class="tag b">pool</span>' : '',
+    hoaBadge,
+    ...tags.filter(t=>t!=='pool').map(t=>`<span class="tag">${t}</span>`),
+  ].filter(Boolean).join('');
+
+  const bedsRow = (p.beds || p.baths || p.sqft) ? `
+    <div class="pbeds-row">
+      ${p.beds  ? `<span class="pbed-chip">${p.beds} bd</span>` : ''}
+      ${p.baths ? `<span class="pbed-chip">${p.baths} ba</span>` : ''}
+      ${p.sqft  ? `<span class="pbed-chip">${p.sqft.toLocaleString()} sqft</span>` : ''}
+    </div>` : '';
+
+  return `
+<div class="pcard ${p.isNew?'is-new':''} ${isFav?'faved':''} ${yieldClass}" id="card-${p.id}">
+  <a class="pcard-link" href="${_listingUrl(p)}" target="_blank" rel="noopener noreferrer" aria-label="View ${p.addr} on Redfin"></a>
+  <div class="pphoto">
+    ${thumb}
+    ${p.isNew?'<div class="new-badge">new today</div>':''}
+    ${domBadge}
+  </div>
+  <div class="pinfo">
+    <div>
+      <div class="paddr">${p.addr}</div>
+      <div class="pmeta">${p.city}<span class="pmeta-sep">·</span>${p.state}</div>
+      ${bedsRow}
+    </div>
+    <div class="ptags">${featureTags}</div>
+  </div>
+  <div class="pfin">
+    <div class="pfin-accent"></div>
+    <div class="pf-header">
+      <div>
+        <div class="priceval">$${(p.price/1000).toFixed(0)}k</div>
+        <div class="pricesub">${ppsf?'$'+ppsf+'/sqft · ':''} $${Math.round(cf.downAmt/1000)}k down</div>
+      </div>
+      <button class="fav-btn ${isFav?'on':''}" onclick="event.stopPropagation();toggleFav(${JSON.stringify(p.id)})" title="${isFav?'Unsave':'Save'}">${isFav?'★':'☆'}</button>
+    </div>
+
+    <!-- Monthly cash flow hero -->
+    <div class="cf-hero ${cf.netMonthly>=0?'pos':'neg'}">
+      <div class="cf-hero-val">${cf.netMonthly>=0?'+':'-'}$${Math.abs(cf.netMonthly).toLocaleString()}</div>
+      <div class="cf-hero-info">
+        <div class="cf-hero-lbl">Monthly cash flow</div>
+        <div class="cf-hero-sub">after all expenses &amp; P&amp;I</div>
+      </div>
+    </div>
+
+    <!-- Key metrics -->
+    <div class="pf-metrics">
+      <div class="pf-box ${cf.cocReturn>=8?'income':''}">
+        <div class="pf-v">${cf.cocReturn!==0?cf.cocReturn+'%':'—'}</div>
+        <div class="pf-l">Cash-on-cash</div>
+      </div>
+      <div class="pf-box ${isHigh?'income':isMed?'':''}" style="${isMed?'background:var(--am-bg);border-color:var(--am-bdr)':''}">
+        <div class="pf-v" style="${isMed?'color:var(--am)':''}">${p.grossYield>0?p.grossYield+'%':'—'}</div>
+        <div class="pf-l">Gross yield</div>
+      </div>
+    </div>
+
+    <!-- Expense breakdown -->
+    <div style="margin-top:2px">
+      <div class="cf-row"><span class="cf-row-lbl">Revenue est/yr</span><span class="cf-row-val">${cf.annualRevenue>0?'$'+(cf.annualRevenue/1000).toFixed(0)+'k':'—'}</span></div>
+      <div class="cf-row"><span class="cf-row-lbl">Mortgage P&amp;I/mo</span><span class="cf-row-val">−$${cf.monthlyMortgage.toLocaleString()}</span></div>
+      <div class="cf-row"><span class="cf-row-lbl">Operating exp/yr</span><span class="cf-row-val">−$${(cf.annualExp/1000).toFixed(0)}k</span></div>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <a class="rfn-link" href="${_listingUrl(p)}" target="_blank" onclick="event.stopPropagation()" style="flex:1">
+        View on Redfin ↗
+      </a>
+      <button class="regs-btn" onclick="event.stopPropagation();showRegulations('${p.city.replace(/'/g,"\\'")}','${p.state}')" title="View STR regulations">
+        ⚖ Regs
+      </button>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─── TOP PICKS ────────────────────────────────────────────────
+let _tpAllProps = [];   // all props collected during top-picks scan
+let _tpScanning = false;
+
+/**
+ * Composite potential score (0–100).
+ * Weights: gross yield 40%, CoC return 30%, cash flow 20%, dom freshness 10%
+ */
+function calcPotentialScore(p, cfS) {
+  const cf = calcFinancials(p, cfS);
+
+  // 1. Gross yield (0–20% mapped to 0–40 pts, capped at 40)
+  const yieldPts = Math.min(40, (p.grossYield || 0) * 2);
+
+  // 2. Cash-on-cash return (0–20% mapped to 0–30 pts, capped at 30)
+  const cocPts = Math.min(30, Math.max(0, cf.cocReturn * 1.5));
+
+  // 3. Monthly cash flow (-∞ to +∞ → 0–20 pts)
+  //    $0/mo = 8pts, $500/mo = 14pts, $1000+/mo = 20pts, negative = 0–7 pts
+  let cfPts = 0;
+  if (cf.netMonthly >= 1000)     cfPts = 20;
+  else if (cf.netMonthly >= 500) cfPts = 14 + ((cf.netMonthly - 500) / 500) * 6;
+  else if (cf.netMonthly >= 0)   cfPts = 8  + (cf.netMonthly / 500)  * 6;
+  else                           cfPts = Math.max(0, 8 + (cf.netMonthly / 300));  // negative CF bleeds down to 0
+
+  // 4. Days-on-market freshness (newer = higher; 0 dom = 10pts, 30 dom = 0pts)
+  const domPts = p.dom >= 0 ? Math.max(0, 10 - (p.dom / 3)) : 5;
+
+  // 5. Bonus: has Airbnb revenue estimate
+  const revBonus = p.airbnbEst > 0 ? 2 : 0;
+
+  const raw = yieldPts + cocPts + cfPts + domPts + revBonus;
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
+function _scoreLabel(s) {
+  if (s >= 80) return { label: '🔥 Elite',   cls: 'elite' };
+  if (s >= 65) return { label: '⭐ Great',   cls: 'great' };
+  if (s >= 50) return { label: '✓ Good',    cls: '' };
+  return               { label: `${s}`,      cls: '' };
+}
+
+async function runTopScan() {
+  if (_tpScanning) return;
+  _tpScanning = true;
+
+  const runBtn = document.getElementById('tp-run-btn');
+  runBtn.disabled = true; runBtn.textContent = '⏳ Scanning…';
+
+  // Get enabled markets
+  const markets = MARKETS.filter(m => m.sel);
+  if (!markets.length) {
+    toast('No markets enabled — add and enable markets first', false);
+    runBtn.disabled = false; runBtn.textContent = '▶ Scan All Markets';
+    _tpScanning = false; return;
+  }
+
+  _tpAllProps = [];
+  document.getElementById('tp-empty').style.display  = 'none';
+  document.getElementById('tp-list').style.display   = 'none';
+  document.getElementById('tp-controls').style.display = 'none';
+  document.getElementById('tp-progress').style.display = 'block';
+
+  const grid      = document.getElementById('tp-mkt-grid');
+  const progBar   = document.getElementById('tp-prog-bar');
+  const progStatus= document.getElementById('tp-prog-status');
+
+  // Build market chips
+  const chipMap = {};
+  grid.innerHTML = markets.map(m => {
+    const id = `tpchip-${m.name.replace(/\s/g,'-')}`;
+    chipMap[m.name] = id;
+    return `<span class="tp-mkt-chip" id="${id}">${m.name}</span>`;
+  }).join('');
+
+  let done = 0;
+  const total = markets.length;
+  const cfS = getCFSettings();
+
+  // Build fetch params from global filter state
+  const cr = getCriteria();
+  const minP  = cr.priceMin || 150000;
+  const maxP  = cr.priceMax || 650000;
+  const minB  = cr.bedsMin  || 2;
+  const maxB  = cr.bedsMax  || 6;
+  const minBa = cr.bathsMin || 1;
+  const maxDom = domFilter  || 30;
+
+  const scanMarket = async (m) => {
+    const chipEl = document.getElementById(chipMap[m.name]);
+    if (chipEl) chipEl.classList.add('scanning');
+    try {
+      const params = new URLSearchParams({
+        location:   `${m.name}, ${m.state}`,
+        min_price:  m.minPrice != null ? m.minPrice : minP,
+        max_price:  m.maxPrice != null ? m.maxPrice : maxP,
+        min_beds:   minB, max_beds: maxB,
+        min_baths:  minBa, max_dom: maxDom,
+        pool:       m.pool || false,
+        min_yield:  0,
+        home_types: '1',   // houses only — no condos, apartments or townhouses
+      });
+      const res = await fetch(`${BACKEND}/api/redfin?${params}`);
+      const data = await res.json();
+      const props = Array.isArray(data) ? data : (data.listings || []);
+
+      // Score each property and attach
+      const scored = props
+        .filter(p => p.grossYield > 0 || p.airbnbEst > 0)
+        .map(p => ({ ...p, _score: calcPotentialScore(p, cfS) }))
+        .filter(p => p._score >= 30);  // discard obvious duds early
+
+      _tpAllProps.push(...scored);
+      if (chipEl) chipEl.className = `tp-mkt-chip ${scored.length ? 'done' : 'empty'}`;
+    } catch(e) {
+      if (chipEl) chipEl.classList.replace('scanning','error');
+    }
+    done++;
+    const pct = Math.round((done / total) * 100);
+    progBar.style.width = pct + '%';
+    progStatus.textContent = `${done} / ${total} markets scanned · ${_tpAllProps.length} candidates found…`;
+  };
+
+  // Run in batches of 4 (mirrors backend semaphore)
+  const BATCH = 4;
+  for (let i = 0; i < markets.length; i += BATCH) {
+    await Promise.allSettled(markets.slice(i, i + BATCH).map(scanMarket));
+    // Let UI breathe between batches
+    await new Promise(r => setTimeout(r, 50));
+  }
+
+  progStatus.textContent = `✅ Scan complete — ${_tpAllProps.length} qualifying properties found across ${total} markets`;
+  document.getElementById('tp-controls').style.display = 'block';
+  document.getElementById('tp-badge').textContent = _tpAllProps.length;
+
+  renderTopPicks();
+  runBtn.disabled = false; runBtn.textContent = '↺ Re-scan';
+  _tpScanning = false;
+}
+
+function renderTopPicks() {
+  const minScore = parseInt(document.getElementById('tp-min-score')?.value || 50);
+  const limit    = parseInt(document.getElementById('tp-limit')?.value || 25);
+  const cfS      = getCFSettings();
+
+  const filtered = _tpAllProps
+    .filter(p => p._score >= minScore)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, limit);
+
+  const list  = document.getElementById('tp-list');
+  const empty = document.getElementById('tp-empty');
+
+  document.getElementById('tp-stats').textContent =
+    `${filtered.length} shown of ${_tpAllProps.filter(p=>p._score>=minScore).length} qualifying`;
+
+  if (!filtered.length) {
+    list.style.display  = 'none';
+    empty.style.display = 'block';
+    empty.innerHTML = `<div style="font-size:28px;opacity:.2;margin-bottom:10px">🔍</div>No properties above score ${minScore}. Try lowering the threshold.`;
+    return;
+  }
+
+  empty.style.display = 'none';
+  list.style.display  = 'block';
+  list.innerHTML = filtered.map((p, idx) => {
+    const base  = cardHTML(p, cfS);
+    const sl    = _scoreLabel(p._score);
+    // Inject rank + score badge into card (insert after first <div class="pcard")
+    const badge = `<div class="tp-score-badge ${sl.cls}" style="top:36px">${sl.label} · ${p._score}</div>
+                   <div style="position:absolute;top:10px;right:10px;z-index:3;background:rgba(0,0,0,.55);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px">#${idx+1}</div>`;
+    return base.replace('<a class="pcard-link"', badge + '<a class="pcard-link"');
+  }).join('');
+}
+
+// ─── REGULATIONS ──────────────────────────────────────────────
+const _regCache = {};
+
+async function showRegulations(city, state) {
+  const modal = document.getElementById('reg-modal');
+  const panel = document.getElementById('reg-panel');
+  modal.classList.add('open');
+  panel.innerHTML = `<div class="reg-loading">⏳ Loading regulations for ${city}, ${state}…</div>`;
+
+  const cacheKey = `${city}|${state}`;
+  if (_regCache[cacheKey]) {
+    _renderRegModal(panel, _regCache[cacheKey], city, state);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${BACKEND}/api/regulations?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`);
+    const data = await res.json();
+    _regCache[cacheKey] = data;
+    _renderRegModal(panel, data, city, state);
+  } catch(e) {
+    panel.innerHTML = `
+      <div class="reg-panel-header">
+        <div><div class="reg-panel-title">${city}, ${state}</div><div class="reg-panel-sub">STR Regulations</div></div>
+        <button class="reg-close-btn" onclick="closeRegModal()">×</button>
+      </div>
+      <div class="reg-status-bar unknown"><span class="reg-status-icon">⚠️</span> Could not load — backend may be offline</div>
+      <a class="reg-source-link" href="${_regUrl(city,state)}" target="_blank" rel="noopener">View on comparent.com ↗</a>`;
+  }
+}
+
+function _regUrl(city, state) {
+  const STATE_NAMES = {
+    'AL':'alabama','AK':'alaska','AZ':'arizona','AR':'arkansas','CA':'california',
+    'CO':'colorado','CT':'connecticut','DE':'delaware','FL':'florida','GA':'georgia',
+    'HI':'hawaii','ID':'idaho','IL':'illinois','IN':'indiana','IA':'iowa',
+    'KS':'kansas','KY':'kentucky','LA':'louisiana','ME':'maine','MD':'maryland',
+    'MA':'massachusetts','MI':'michigan','MN':'minnesota','MS':'mississippi',
+    'MO':'missouri','MT':'montana','NE':'nebraska','NV':'nevada','NH':'new-hampshire',
+    'NJ':'new-jersey','NM':'new-mexico','NY':'new-york','NC':'north-carolina',
+    'ND':'north-dakota','OH':'ohio','OK':'oklahoma','OR':'oregon','PA':'pennsylvania',
+    'RI':'rhode-island','SC':'south-carolina','SD':'south-dakota','TN':'tennessee',
+    'TX':'texas','UT':'utah','VT':'vermont','VA':'virginia','WA':'washington',
+    'WV':'west-virginia','WI':'wisconsin','WY':'wyoming','DC':'washington-dc',
+  };
+  const stSlug = STATE_NAMES[state] || state.toLowerCase();
+  const citySlug = city.toLowerCase().replace(/['. ]/g, c => c===' ' ? '-' : '');
+  return `https://regulations.comparent.com/regulations/${stSlug}/${citySlug}/`;
+}
+
+function _renderRegModal(panel, data, city, state) {
+  if (data.error) {
+    panel.innerHTML = `
+      <div class="reg-panel-header">
+        <div><div class="reg-panel-title">${city}, ${state}</div><div class="reg-panel-sub">STR Regulations</div></div>
+        <button class="reg-close-btn" onclick="closeRegModal()">×</button>
+      </div>
+      <div class="reg-status-bar unknown"><span class="reg-status-icon">⚠️</span> ${data.error}</div>
+      <a class="reg-source-link" href="${data.sourceUrl||_regUrl(city,state)}" target="_blank" rel="noopener">View on comparent.com ↗</a>`;
+    return;
+  }
+
+  const STATUS_META = {
+    allowed:     { icon:'✅', label:'Allowed',     desc:'STRs are permitted in this market' },
+    restricted:  { icon:'⚠️', label:'Restricted',  desc:'STRs allowed with permits/conditions' },
+    banned:      { icon:'🚫', label:'Banned',       desc:'STRs are prohibited in this market' },
+    unregulated: { icon:'⬜', label:'Unregulated',  desc:'No specific STR regulations found' },
+    not_found:   { icon:'❓', label:'Not found',    desc:'No regulation data available for this city' },
+    unknown:     { icon:'❓', label:'Unknown',      desc:'Could not determine regulation status' },
+  };
+  const st = data.status || 'unknown';
+  const meta = STATUS_META[st] || STATUS_META.unknown;
+
+  const gridItems = [
+    { lbl:'Permit Required', val: data.permit===true ? '✓ Yes' : data.permit===false ? '✗ No' : '—' },
+    { lbl:'Owner-Occupied Rule', val: data.ownerOcc ? 'May apply' : '—' },
+    { lbl:'License Fee', val: data.fee || '—' },
+    { lbl:'Tax Rate', val: data.tax || '—' },
+  ].map(c => `<div class="reg-cell"><div class="reg-cell-lbl">${c.lbl}</div><div class="reg-cell-val">${c.val}</div></div>`).join('');
+
+  const rulesHtml = data.rules && data.rules.length
+    ? `<div class="reg-rules">
+        <div class="reg-rules-title">Key Requirements</div>
+        ${data.rules.map(r=>`<div class="reg-rule">${r}</div>`).join('')}
+       </div>` : '';
+
+  panel.innerHTML = `
+    <div class="reg-panel-header">
+      <div>
+        <div class="reg-panel-title">${city}, ${state}</div>
+        <div class="reg-panel-sub">STR Regulations · via comparent.com</div>
+      </div>
+      <button class="reg-close-btn" onclick="closeRegModal()">×</button>
+    </div>
+    <div class="reg-status-bar ${st}">
+      <span class="reg-status-icon">${meta.icon}</span>
+      <div><strong>${meta.label}</strong> — ${meta.desc}</div>
+    </div>
+    <div class="reg-grid">${gridItems}</div>
+    ${rulesHtml}
+    <a class="reg-source-link" href="${data.sourceUrl||_regUrl(city,state)}" target="_blank" rel="noopener">
+      View full regulations on comparent.com ↗
+    </a>`;
+}
+
+function closeRegModal() {
+  document.getElementById('reg-modal').classList.remove('open');
+}
+
+// ─── FAV ──────────────────────────────────────────────────────
+function toggleFav(id) {
+  if (favorites.has(id)) { favorites.delete(id); toast('Removed from saved'); }
+  else { favorites.add(id); toast('Saved ★', true); }
+  document.getElementById('fav-badge').textContent = favorites.size;
+  renderResults();
+}
+function renderFavorites() {
+  const fl = document.getElementById('fav-list'), em = document.getElementById('fav-empty');
+  const favs = PROPS.filter(p=>favorites.has(p.id));
+  const _cfS = getCFSettings();
+  fl.innerHTML = favs.map(p=>cardHTML(p, _cfS)).join('');
+  em.style.display = favs.length ? 'none' : 'block';
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────
+function exportCSV() {
+  const ps = getFiltered();
+  const cfS  = getCFSettings();
+  const rows = [['Address','City','State','Price','Beds','Baths','Sqft','DOM',
+    'Gross Yield','Revenue Est/yr','Monthly Cash Flow','Cash-on-Cash','Monthly Mortgage',
+    'Operating Exp/yr','Down Payment','HOA','HOA Amt/mo','Pool','Tags']];
+  ps.forEach(p => {
+    const cf = calcFinancials(p, cfS);
+    rows.push([
+      p.addr, p.city, p.state, p.price, p.beds, p.baths, p.sqft, p.dom,
+      p.grossYield+'%', cf.annualRevenue,
+      cf.netMonthly, cf.cocReturn+'%', cf.monthlyMortgage,
+      cf.annualExp, cf.downAmt,
+      p.hoa?'Yes':'No', p.hoaAmt||'', p.hasPool?'Yes':'No', (p.tags||[]).join('|'),
+    ]);
+  });
+  const csv  = rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const link = document.createElement('a');
+  link.href  = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  link.download = 'str_scan_'+new Date().toISOString().slice(0,10)+'.csv';
+  link.click();
+  toast('CSV exported');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────
+function toast(msg, good=false, bad=false) {
+  const el = document.createElement('div');
+  el.className = 'toast'+(good?' g':'')+(bad?' r':'');
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('show')));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),300); }, 2800);
+}
+
+// ─── MAP ──────────────────────────────────────────────────────
+const MARKET_COORDS = {
+  // Colorado
+  'Divide':[38.930,-105.187],'Breckenridge':[39.482,-106.038],'Telluride':[37.938,-107.812],
+  'Vail':[39.643,-106.378],'Aspen':[39.191,-106.818],'Steamboat Springs':[40.485,-106.832],
+  'Estes Park':[40.377,-105.522],'Crested Butte':[38.870,-106.988],'Durango':[37.275,-107.880],
+  'Woodland Park':[38.994,-105.057],'Cascade':[38.958,-105.016],'Westminster':[39.837,-105.037],
+  // Arizona
+  'Sedona':[34.870,-111.761],'Scottsdale':[33.494,-111.926],'Flagstaff':[35.198,-111.651],
+  'Prescott':[34.540,-112.469],'Mesa':[33.415,-111.832],'Tempe':[33.426,-111.940],
+  'Chandler':[33.306,-111.841],'Gilbert':[33.353,-111.789],'Glendale':[33.539,-112.186],
+  'Tucson':[32.223,-110.975],
+  // Tennessee
+  'Gatlinburg':[35.714,-83.511],'Pigeon Forge':[35.789,-83.555],'Sevierville':[35.869,-83.562],
+  'Townsend':[35.675,-83.740],'Cosby':[35.818,-83.234],
+  // Arkansas
+  'Hot Springs':[34.504,-93.055],
+  // Georgia
+  'Blue Ridge':[34.863,-84.324],'Helen':[34.703,-83.730],'Dahlonega':[34.533,-83.985],
+  'Savannah':[32.084,-81.100],'Tybee Island':[31.999,-80.845],
+  // Florida
+  'West Palm Beach':[26.715,-80.053],'Destin':[30.394,-86.496],
+  'Panama City Beach':[30.177,-85.806],'Kissimmee':[28.292,-81.408],
+  'Naples':[26.142,-81.795],'Sarasota':[27.336,-82.531],'Cape Coral':[26.563,-81.950],
+  'Fort Myers':[26.641,-81.872],'Clearwater':[27.966,-82.800],'St. Pete Beach':[27.726,-82.740],
+  'St. Augustine':[29.895,-81.315],'Marco Island':[25.941,-81.718],'Anna Maria':[27.532,-82.734],
+  'Siesta Key':[27.267,-82.546],'Key West':[24.555,-81.780],'Orlando':[28.538,-81.379],
+  'Boca Raton':[26.368,-80.129],'Fort Lauderdale':[26.122,-80.137],
+  'Daytona Beach':[29.211,-81.023],'Jacksonville Beach':[30.279,-81.393],
+  'Bradenton':[27.499,-82.575],'Fort Walton Beach':[30.406,-86.619],
+  'Cocoa Beach':[28.320,-80.608],'Miami Beach':[25.791,-80.130],
+  'Boynton Beach':[26.532,-80.091],'Delray Beach':[26.462,-80.073],
+  // North Carolina
+  'Asheville':[35.595,-82.552],'Boone':[36.217,-81.675],'Brevard':[35.234,-82.734],
+  'Bryson City':[35.433,-83.449],'Cashiers':[35.103,-83.099],'Highlands':[35.052,-83.193],
+  'Hendersonville':[35.318,-82.461],'Cherokee':[35.478,-83.310],'Lake Norman':[35.532,-80.930],
+  // New York
+  'Hunter':[42.210,-74.218],'Windham':[42.308,-74.257],'Lake Placid':[44.280,-73.980],
+  'Ellicottville':[42.277,-78.669],
+  // Pennsylvania
+  'Pocono Mountains':[41.115,-75.354],'Hershey':[40.286,-76.650],
+  // New Hampshire
+  'Conway':[43.989,-71.126],'Bartlett':[44.083,-71.288],'Gilford':[43.543,-71.406],
+  // Maine
+  'Bethel':[44.409,-70.790],'Newry':[44.509,-70.805],
+  // Massachusetts
+  'Great Barrington':[42.196,-73.362],
+  // Vermont
+  'Jay':[44.930,-72.512],
+  // Kentucky
+  'Red River Gorge':[37.790,-83.682],
+  // Indiana
+  'Indianapolis':[39.768,-86.158],'South Bend':[41.676,-86.252],'Fort Wayne':[41.079,-85.139],
+  // Ohio
+  'Logan':[39.540,-82.407],'Columbus':[39.961,-82.999],'Cincinnati':[39.103,-84.512],
+  // Texas
+  'Austin':[30.267,-97.743],'Lake Travis':[30.395,-97.912],'San Antonio':[29.424,-98.494],
+  'Fredericksburg':[30.275,-98.872],'Wimberley':[29.999,-98.099],'New Braunfels':[29.703,-98.125],
+  'South Padre Island':[26.112,-97.169],'Waco':[31.549,-97.147],'Richardson':[32.948,-96.730],
+  'Grand Prairie':[32.746,-97.006],'Irving':[32.814,-96.949],
+  'Abilene':[32.449,-99.733],'Amarillo':[35.222,-101.831],
+  // Utah / Wyoming
+  'Moab':[38.573,-109.550],'Park City':[40.646,-111.498],'Jackson':[43.480,-110.762],
+  // California
+  'Joshua Tree':[34.135,-116.313],'Big Bear':[34.244,-116.911],
+  'South Lake Tahoe':[38.940,-119.977],'Mammoth Lakes':[37.649,-118.972],
+  'Palm Springs':[33.830,-116.545],'Oakhurst':[37.327,-119.649],'Clear Lake':[39.098,-122.632],
+  // Pacific Northwest
+  'Bend':[44.058,-121.315],'Leavenworth':[47.596,-120.662],'Winthrop':[48.471,-120.177],
+  // Idaho
+  "Coeur d'Alene":[47.678,-116.781],'McCall':[44.911,-116.102],
+  // Montana / New Mexico
+  'Whitefish':[48.411,-114.335],'Taos':[36.407,-105.573],
+  'Santa Fe':[35.687,-105.938],'Angel Fire':[36.392,-105.287],
+  // South Carolina / Alabama
+  'Hilton Head':[32.216,-80.753],'Myrtle Beach':[33.689,-78.887],'Gulf Shores':[30.246,-87.701],
+  // Virginia
+  'Virginia Beach':[36.853,-75.978],'Luray':[38.663,-78.459],
+  'Charlottesville':[38.029,-78.477],'Wintergreen Resort':[37.965,-79.072],
+  'Shenandoah':[38.887,-78.186],
+  // Midwest
+  'Akron':[41.082,-81.519],
+  'Peoria':[40.694,-89.589],'Rockford':[42.271,-89.094],'Wichita':[37.689,-97.336],
+  'Stanton':[37.847,-83.858],
+  'Hazel Park':[42.461,-83.103],'Fairbanks':[64.838,-147.716],
+  'Broken Bow':[34.028,-94.739],
+  'Beech Mountain':[36.196,-81.871],'Sneads Ferry':[34.563,-77.393],
+  'Davenport':[28.163,-81.606],'Tampa':[27.948,-82.458],
+  'Spartanburg':[34.950,-81.932],'Montgomery':[32.361,-86.279],
+  'Columbus GA':[32.461,-84.987],
+  'Branson':[36.644,-93.219],'Lake of the Ozarks':[38.198,-92.640],
+  'Sister Bay':[45.189,-87.125],'Lake Geneva':[42.592,-88.433],
+  'Wisconsin Dells':[43.628,-89.771],'Baraboo':[43.471,-89.744],
+  'Traverse City':[44.763,-85.621],'Petoskey':[45.374,-84.955],'Bellaire':[44.984,-85.214],
+  // Nevada / Hawaii
+  'Las Vegas':[36.170,-115.140],'Henderson':[36.040,-114.982],
+  'Kihei':[20.765,-156.444],'Kailua Kona':[19.640,-155.997],
+  'Lahaina':[20.878,-156.683],'Hilo':[19.730,-155.090],
+};
+
+let mapInstance    = null;
+let mapMarkers     = [];
+let mapInitialized = false;
+
+function _initMap() {
+  if (mapInitialized) return;
+  mapInitialized = true;
+  mapInstance = L.map('map-container', { zoomControl: true }).setView([37.5, -96.0], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+    maxZoom: 18,
+  }).addTo(mapInstance);
+}
+
+function _yieldColor(y) {
+  if (y >= 12) return '#16a34a';
+  if (y >= 10) return '#22c55e';
+  if (y >= 8)  return '#f59e0b';
+  return '#94a3b8';
+}
+
+function renderMap() {
+  _initMap();
+
+  // Remove old markers
+  mapMarkers.forEach(m => m.remove());
+  mapMarkers = [];
+
+  const ps = getFiltered();
+  const badge = document.getElementById('map-badge');
+  if (badge) badge.textContent = ps.length || '—';
+
+  const empty = document.getElementById('map-empty');
+  const lbl   = document.getElementById('map-label');
+
+  if (!ps.length) {
+    if (empty) empty.style.display = 'block';
+    if (lbl)   lbl.textContent = 'No results — run a scan or adjust filters';
+    setTimeout(() => mapInstance.invalidateSize(), 60);
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  if (lbl)   lbl.textContent = `${ps.length} propert${ps.length===1?'y':'ies'} across ${new Set(ps.map(p=>p.city)).size} markets`;
+
+  // Group by city
+  const byCity = {};
+  ps.forEach(p => { (byCity[p.city] = byCity[p.city] || []).push(p); });
+
+  const bounds = [];
+
+  Object.entries(byCity).forEach(([city, props]) => {
+    const coords = MARKET_COORDS[city];
+    if (!coords) return;
+    bounds.push(coords);
+
+    const avgYield = props.reduce((s, p) => s + (p.grossYield || 0), 0) / props.length;
+    const color    = _yieldColor(avgYield);
+    const radius   = Math.min(10 + props.length * 2.5, 28);
+
+    const marker = L.circleMarker(coords, {
+      radius,
+      fillColor: color,
+      color:       'white',
+      weight:      2,
+      opacity:     1,
+      fillOpacity: 0.88,
+    }).addTo(mapInstance);
+    mapMarkers.push(marker);
+
+    // Build popup rows (cap at 8, note overflow)
+    const rows = props.slice(0, 8).map(p => `
+      <div style="padding:7px 0;border-bottom:1px solid #f1f5f9">
+        <div style="font-weight:700;font-size:12px;margin-bottom:3px;line-height:1.3">${p.addr}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-family:monospace;font-size:13px;font-weight:800">$${Math.round(p.price/1000)}k</span>
+          <span style="font-family:monospace;font-size:13px;font-weight:700;color:${_yieldColor(p.grossYield)}">${p.grossYield>0?p.grossYield+'%':'—'} yield</span>
+          <span style="font-family:monospace;font-size:11px;color:#64748b">${p.beds||'?'}bd · ${p.baths||'?'}ba${p.dom>=0?' · '+p.dom+'d':''}</span>
+        </div>
+        <a href="${_listingUrl(p)}" target="_blank"
+          style="font-size:10px;color:#1d4ed8;text-decoration:none;font-family:monospace;margin-top:2px;display:inline-block">
+          View on Redfin ↗
+        </a>
+      </div>`).join('');
+
+    const overflow = props.length > 8
+      ? `<div style="font-size:11px;color:#94a3b8;padding-top:6px;font-family:monospace">+${props.length-8} more — switch to List view</div>`
+      : '';
+
+    const popup = `
+      <div style="min-width:230px;max-width:290px;font-family:system-ui,sans-serif">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;gap:8px">
+          <div>
+            <div style="font-weight:800;font-size:16px;line-height:1.2">${city}</div>
+            <div style="font-size:11px;color:#64748b;font-family:monospace;margin-top:2px">
+              ${props.length} listing${props.length!==1?'s':''}
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:22px;font-weight:800;font-family:monospace;color:${color};line-height:1">
+              ${avgYield.toFixed(1)}%
+            </div>
+            <div style="font-size:10px;color:#94a3b8;font-family:monospace">avg yield</div>
+          </div>
+        </div>
+        ${rows}
+        ${overflow}
+      </div>`;
+
+    marker.bindPopup(popup, { maxWidth: 310, closeButton: true });
+
+    // Show city label on hover
+    marker.on('mouseover', function() { this.openPopup(); });
+  });
+
+  if (bounds.length) {
+    try {
+      mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
+    } catch(e) {}
+  }
+
+  // Leaflet needs a size refresh after the tab becomes visible
+  setTimeout(() => mapInstance.invalidateSize(), 80);
+}
+
+init();
+</script>
+</body>
+</html>
