@@ -1836,7 +1836,7 @@ async function fetchMkt(mkt, criteria) {
     min_beds:   criteria.bedsMin,
     max_beds:   criteria.bedsMax,
     min_baths:  criteria.bathsMin,
-    max_dom:    domFilter,
+    max_dom:    30,   // always fetch 30 days; client-side filter handles 1/7/30 display
     min_yield:  criteria.yieldMin || 0,
     keywords:   criteria.keywords.join(','),
     home_types: getHomeTypeCodes(),
@@ -2352,7 +2352,7 @@ async function runTopScan() {
         min_price:  m.minPrice != null ? m.minPrice : minP,
         max_price:  m.maxPrice != null ? m.maxPrice : maxP,
         min_beds:   minB, max_beds: maxB,
-        min_baths:  minBa, max_dom: maxDom,
+        min_baths:  minBa, max_dom: 30,
         pool:       m.pool || false,
         min_yield:  0,
         home_types: '1',   // houses only — no condos, apartments or townhouses

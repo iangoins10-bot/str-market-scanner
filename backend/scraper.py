@@ -900,7 +900,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     page.on("response", on_response)
 
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=25000)
 
         # Wait for listing cards to appear — short timeout, fall through quickly
         card_sel = (
@@ -908,25 +908,25 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
             "[class*='HomeCard'], [class*='homeCard'], [data-listing-id]"
         )
         try:
-            await page.wait_for_selector(card_sel, timeout=6000)
+            await page.wait_for_selector(card_sel, timeout=7000)
         except Exception:
             pass  # fall through to DOM fallback
 
-        # Scroll to trigger lazy-loaded cards & GIS API — fast
-        for scroll_y in [400, 900, 1500, 0]:
+        # Scroll progressively to trigger all lazy-loaded cards and GIS API pages.
+        # Do NOT call window.stop() early — it kills pending API responses and
+        # cuts off additional paginated data, causing us to miss listings Redfin has.
+        scroll_positions = [300, 700, 1200, 1800, 2500, 3500, 5000, 7000, 0]
+        prev_count = 0
+        for scroll_y in scroll_positions:
             await page.evaluate(f"window.scrollTo(0, {scroll_y})")
-            await page.wait_for_timeout(100)
-            if api_homes:
-                # Stop loading remaining page resources — we have what we need
-                try:
-                    await page.evaluate("window.stop()")
-                except Exception:
-                    pass
+            await page.wait_for_timeout(250)
+            # If count stabilized after getting data, we can stop scrolling early
+            if api_homes and len(api_homes) == prev_count and scroll_y > 2000:
                 break
+            prev_count = len(api_homes)
 
-        # Short settle wait — only if no API data yet
-        if not api_homes:
-            await page.wait_for_timeout(900)
+        # Final settle wait — let any in-flight API responses finish
+        await page.wait_for_timeout(1200)
 
         # ── Secondary: try React __reactProps / window.__data ─────
         if not api_homes:
@@ -960,8 +960,18 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
 
         # ── Primary: use intercepted API data ──────────────────────
         if api_homes:
-            print(f"    Parsing {len(api_homes)} homes from API intercept")
-            for home in api_homes[:100]:
+            # Deduplicate by listing ID before processing (multiple scroll events
+            # can fire the same API endpoint, resulting in duplicate home objects)
+            seen_ids = set()
+            unique_homes = []
+            for h in api_homes:
+                hid = h.get("mlsId") or h.get("listingId") or h.get("propertyId") or str(h.get("price","")) + str(h.get("address",""))
+                if hid not in seen_ids:
+                    seen_ids.add(hid)
+                    unique_homes.append(h)
+            api_homes = unique_homes
+            print(f"    Parsing {len(api_homes)} homes from API intercept (after dedup)")
+            for home in api_homes[:500]:
                 try:
                     listing = build_listing(home, market_name, state, criteria, require_pool, min_yield)
                     if listing:
@@ -1012,7 +1022,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                         els = Array.from(document.querySelectorAll(sel));
                         if (els.length > 0) break;
                     }
-                    return els.slice(0, 60).map(el => {
+                    return els.slice(0, 200).map(el => {
                         const html = (el.outerHTML || '').toLowerCase();
                         // Also check all visible/hidden text, aria-labels, titles
                         const attrText = Array.from(el.querySelectorAll('*'))
@@ -1043,7 +1053,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
             max_sqft  = criteria.get("max_sqft",  999999)
             keywords  = [k.strip().lower() for k in criteria.get("keywords", "").split(",") if k.strip()]
 
-            for _ci, card in enumerate(cards[:60]):
+            for _ci, card in enumerate(cards[:200]):
                 try:
                     text  = await card.inner_text()
                     lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
