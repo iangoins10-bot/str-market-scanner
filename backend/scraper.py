@@ -869,6 +869,30 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     # ── Intercept Redfin's internal GIS / search API ──────────────
     GIS_PATTERNS = ["/stingray/api/gis", "/stingray/api/v1/search/", "/api/v1/search/"]
 
+    # Capture the GIS API URL and total count for pagination
+    api_meta = {"total": 0, "gis_url": "", "captured_pages": set()}
+
+    def _parse_gis_response(text, source_url=""):
+        """Parse a GIS response text, return (homes_list, total_count)."""
+        try:
+            if text.startswith("{}&&"):
+                text = text[4:]
+            if not text.strip().startswith("{"):
+                return [], 0
+            data = json.loads(text)
+            payload = data.get("payload") or {}
+            homes = payload.get("homes") or data.get("homes") or []
+            total = (
+                payload.get("totalCount")
+                or payload.get("numHomes")
+                or payload.get("count")
+                or len(homes)
+            )
+            return homes, int(total)
+        except Exception as e:
+            print(f"    [API] Parse error ({source_url[:60]}): {e}")
+            return [], 0
+
     async def on_response(response):
         url_lower = response.url.lower()
         if not any(p in url_lower for p in GIS_PATTERNS):
@@ -878,22 +902,22 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
         ct = response.headers.get("content-type", "")
         if "json" not in ct and "javascript" not in ct and "text" not in ct:
             return
+        # Avoid processing the same URL twice (scroll can re-fire same request)
+        key = response.url[:200]
+        if key in api_meta["captured_pages"]:
+            return
+        api_meta["captured_pages"].add(key)
         try:
             text = await response.text()
-            # Redfin prefixes JSON responses with  {}&&
-            if text.startswith("{}&&"):
-                text = text[4:]
-            if not text.strip().startswith("{"):
-                return
-            data  = json.loads(text)
-            homes = (data.get("payload") or {}).get("homes") or []
-            if not homes:
-                # Some endpoints nest differently
-                homes = data.get("homes") or []
+            homes, total = _parse_gis_response(text, response.url)
             if homes:
                 api_homes.extend(homes)
                 types = {str(h.get("propertyType") or h.get("homeType") or "?") for h in homes[:20]}
-                print(f"    [API] Intercepted {len(homes)} homes from {response.url[:80]} | types: {types}")
+                print(f"    [API] Intercepted {len(homes)} homes (total={total}) from {response.url[:80]} | types: {types}")
+                # Save the GIS URL for pagination (only the first real hit)
+                if not api_meta["gis_url"] and "/stingray/api/gis" in response.url.lower():
+                    api_meta["gis_url"] = response.url
+                    api_meta["total"]   = total
         except Exception as e:
             print(f"    [API] Parse error ({response.url[:60]}): {e}")
 
@@ -928,6 +952,47 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
         # Final settle wait — let any in-flight API responses finish
         await page.wait_for_timeout(1200)
 
+        # ── Pagination: fetch remaining pages if totalCount > received ──
+        # Redfin's GIS API caps at 350 homes per page. If a market has more
+        # matching listings we need to request page 2, 3, ... explicitly.
+        # We do this with fetch() inside the page context so Redfin's session
+        # cookies are automatically included — no auth issues.
+        PAGE_SIZE = 350
+        if api_meta["gis_url"] and api_meta["total"] > len(api_homes):
+            extra_pages = (api_meta["total"] - 1) // PAGE_SIZE  # 0-indexed pages beyond first
+            print(f"    [Pagination] total={api_meta['total']}, received={len(api_homes)}, fetching {extra_pages} more page(s)")
+            base_url = api_meta["gis_url"]
+            for pg in range(2, extra_pages + 2):
+                start = (pg - 1) * PAGE_SIZE
+                # Build paginated URL by swapping start/page_number params
+                paged_url = re.sub(r'([\?&]start=)\d+', lambda m: m.group(1) + str(start), base_url)
+                if 'start=' not in paged_url:
+                    sep = '&' if '?' in paged_url else '?'
+                    paged_url += f"{sep}start={start}"
+                paged_url = re.sub(r'([\?&]page_number=)\d+', lambda m: m.group(1) + str(pg), paged_url)
+                if 'page_number=' not in paged_url:
+                    paged_url += f"&page_number={pg}"
+                try:
+                    raw = await page.evaluate(f"""
+                        async () => {{
+                            try {{
+                                const r = await fetch({json.dumps(paged_url)}, {{credentials: 'include'}});
+                                return await r.text();
+                            }} catch(e) {{ return ''; }}
+                        }}
+                    """)
+                    if raw:
+                        homes_p, _ = _parse_gis_response(raw, paged_url)
+                        if homes_p:
+                            api_homes.extend(homes_p)
+                            print(f"    [Pagination] Page {pg}: +{len(homes_p)} homes")
+                        else:
+                            print(f"    [Pagination] Page {pg}: no homes, stopping")
+                            break
+                except Exception as e:
+                    print(f"    [Pagination] Page {pg} error: {e}")
+                    break
+
         # ── Secondary: try React __reactProps / window.__data ─────
         if not api_homes:
             try:
@@ -960,18 +1025,23 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
 
         # ── Primary: use intercepted API data ──────────────────────
         if api_homes:
-            # Deduplicate by listing ID before processing (multiple scroll events
-            # can fire the same API endpoint, resulting in duplicate home objects)
+            # Deduplicate: Redfin can return the same listing on multiple pages
+            # or when scroll triggers the same API endpoint twice.
             seen_ids = set()
             unique_homes = []
             for h in api_homes:
-                hid = h.get("mlsId") or h.get("listingId") or h.get("propertyId") or str(h.get("price","")) + str(h.get("address",""))
-                if hid not in seen_ids:
+                # Try every field name Redfin has used for a stable listing ID
+                hid = (
+                    h.get("listingId") or h.get("mlsId") or h.get("propertyId")
+                    or h.get("mlsListing", {}).get("listingId") if isinstance(h.get("mlsListing"), dict) else None
+                    or str(_val(h.get("address","")) or "") + str(_val(h.get("price","")) or "")
+                )
+                if hid and hid not in seen_ids:
                     seen_ids.add(hid)
                     unique_homes.append(h)
             api_homes = unique_homes
             print(f"    Parsing {len(api_homes)} homes from API intercept (after dedup)")
-            for home in api_homes[:500]:
+            for home in api_homes:
                 try:
                     listing = build_listing(home, market_name, state, criteria, require_pool, min_yield)
                     if listing:
