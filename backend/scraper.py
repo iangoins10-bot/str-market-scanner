@@ -870,7 +870,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     GIS_PATTERNS = ["/stingray/api/gis", "/stingray/api/v1/search/", "/api/v1/search/"]
 
     # Capture the GIS API URL and total count for pagination
-    api_meta = {"total": 0, "gis_url": "", "captured_pages": set()}
+    api_meta = {"total": 0, "gis_url": ""}
 
     def _parse_gis_response(text, source_url=""):
         """Parse a GIS response text, return (homes_list, total_count)."""
@@ -902,11 +902,6 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
         ct = response.headers.get("content-type", "")
         if "json" not in ct and "javascript" not in ct and "text" not in ct:
             return
-        # Avoid processing the same URL twice (scroll can re-fire same request)
-        key = response.url[:200]
-        if key in api_meta["captured_pages"]:
-            return
-        api_meta["captured_pages"].add(key)
         try:
             text = await response.text()
             homes, total = _parse_gis_response(text, response.url)
@@ -914,8 +909,8 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                 api_homes.extend(homes)
                 types = {str(h.get("propertyType") or h.get("homeType") or "?") for h in homes[:20]}
                 print(f"    [API] Intercepted {len(homes)} homes (total={total}) from {response.url[:80]} | types: {types}")
-                # Save the GIS URL for pagination (only the first real hit)
-                if not api_meta["gis_url"] and "/stingray/api/gis" in response.url.lower():
+                # Save the first GIS URL for pagination
+                if not api_meta["gis_url"] and "/stingray/api/gis" in url_lower:
                     api_meta["gis_url"] = response.url
                     api_meta["total"]   = total
         except Exception as e:
@@ -1025,20 +1020,34 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
 
         # ── Primary: use intercepted API data ──────────────────────
         if api_homes:
-            # Deduplicate: Redfin can return the same listing on multiple pages
-            # or when scroll triggers the same API endpoint twice.
-            seen_ids = set()
+            # Deduplicate across pages — same listing can appear on page 1 and 2.
+            # IMPORTANT: if we can't compute a stable ID, always keep the home.
+            # Never silently drop a home just because we can't identify it.
+            seen_ids: set = set()
             unique_homes = []
             for h in api_homes:
                 # Try every field name Redfin has used for a stable listing ID
-                hid = (
-                    h.get("listingId") or h.get("mlsId") or h.get("propertyId")
-                    or h.get("mlsListing", {}).get("listingId") if isinstance(h.get("mlsListing"), dict) else None
-                    or str(_val(h.get("address","")) or "") + str(_val(h.get("price","")) or "")
-                )
-                if hid and hid not in seen_ids:
+                hid = None
+                for id_field in ("listingId", "mlsId", "propertyId", "id"):
+                    v = h.get(id_field)
+                    if v:
+                        hid = str(v)
+                        break
+                if hid is None:
+                    # Fallback: address string + price
+                    addr  = str(_val(h.get("address")) or h.get("address") or "")
+                    price = str(_val(h.get("price"))   or h.get("price")   or "")
+                    combo = addr + "|" + price
+                    if combo != "|":
+                        hid = combo
+
+                if hid is not None:
+                    if hid in seen_ids:
+                        continue      # genuine duplicate — skip
                     seen_ids.add(hid)
-                    unique_homes.append(h)
+                # hid is None means we couldn't fingerprint it — keep it anyway
+                unique_homes.append(h)
+
             api_homes = unique_homes
             print(f"    Parsing {len(api_homes)} homes from API intercept (after dedup)")
             for home in api_homes:
