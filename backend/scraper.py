@@ -610,19 +610,31 @@ def _val(field):
         return field.get("value")
     return field
 
-# Whitelist of known single-family types — anything else gets scrutinised
+# Redfin's GIS API returns numeric OR string property type codes depending on
+# the API version.  Numeric: 1=SFH, 2=Condo, 3=Townhouse, 4=Multi-family,
+# 5=Land, 6=Other, 7=Mobile, 8=Co-op.  Always add both forms.
 SINGLE_FAMILY_TYPES = {
+    # String forms
     "SINGLE_FAMILY_RESIDENTIAL", "SINGLE_FAMILY", "RESIDENTIAL",
-    "HOUSE", "CABIN", "FARM", "LAND",   # land/farm edge cases still show as house in Redfin
+    "HOUSE", "CABIN", "FARM", "LAND", "MOBILE", "MANUFACTURED",
+    "DETACHED", "SFR", "SFH",
+    # Numeric forms (Redfin GIS API v1/v2)
+    "1", "5", "6", "7",
 }
 CONDO_TYPES = {
+    # String forms
     "CONDO", "CONDO_TOWNHOUSE", "CO_OP", "COOP",
     "CONDOMINIUM", "CONDOMINIMUM", "COOPERATIVE",
+    # Numeric forms
+    "2", "8",
 }
 TOWNHOUSE_TYPES = {
+    # String forms
     "TOWNHOUSE", "TOWN_HOUSE", "TOWNHOME",
     "MULTI_FAMILY_RESIDENTIAL", "MULTI_FAMILY", "MULTIFAMILY",
     "DUPLEX", "TRIPLEX", "QUADRUPLEX",
+    # Numeric forms
+    "3", "4",
 }
 
 def _extract_prop_type(home):
@@ -677,19 +689,20 @@ def build_listing(home, market_name, state, criteria, require_pool, min_yield):
     if not _prop_type_allowed(prop_type, allowed_codes):
         return None
 
-    # 2. Address-based + URL-based detection — condos always have unit numbers or
-    #    a unit slug in the Redfin URL (e.g. /Apt-4B-, /Unit-202-).
+    # 2. Address-based + URL-based detection — condos have unit numbers.
+    #    Be conservative: only reject addresses with clear multi-digit unit numbers
+    #    (e.g. "Unit 4B", "Apt 202") not generic lot/house variants like "#1".
     only_houses = "2" not in allowed_codes and "3" not in allowed_codes
     if only_houses:
         full_addr = str(_val(home.get("address")) or "")
         if re.search(
-            r'\bUnit\s*[\w-]+|\bApt\.?\s*[\w-]+|\bSuite\s*[\w-]+|#\s*\d+|\bFl\.?\s*\d',
+            r'\bUnit\s+\w{2,}|\bApt\.?\s+\w{2,}|\bSuite\s+\w{2,}|#\s*[A-Z]\d|\bFl\.?\s*\d{1,2}\b',
             full_addr, re.IGNORECASE
         ):
             return None
-        # Also check the listing URL slug for clear condo indicators
+        # Check the listing URL slug for unambiguous condo indicators
         raw_link = str(_val(home.get("url")) or home.get("url") or "").lower()
-        if re.search(r'/unit-\d|/apt-\d|/unit-[a-z]\d|/apt-[a-z]\d', raw_link):
+        if re.search(r'/unit-\d{2,}|/apt-\d{2,}|/unit-[a-z]\d|/apt-[a-z]\d', raw_link):
             return None
 
     price = _val(home.get("price"))
@@ -893,6 +906,9 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
             print(f"    [API] Parse error ({source_url[:60]}): {e}")
             return [], 0
 
+    # Signal fired the moment GIS data first arrives
+    gis_received = asyncio.Event()
+
     async def on_response(response):
         url_lower = response.url.lower()
         if not any(p in url_lower for p in GIS_PATTERNS):
@@ -909,7 +925,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                 api_homes.extend(homes)
                 types = {str(h.get("propertyType") or h.get("homeType") or "?") for h in homes[:20]}
                 print(f"    [API] Intercepted {len(homes)} homes (total={total}) from {response.url[:80]} | types: {types}")
-                # Save the first GIS URL for pagination
+                gis_received.set()   # signal that we have data
                 if not api_meta["gis_url"] and "/stingray/api/gis" in url_lower:
                     api_meta["gis_url"] = response.url
                     api_meta["total"]   = total
@@ -919,33 +935,22 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     page.on("response", on_response)
 
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-        # Wait for listing cards to appear — short timeout, fall through quickly
-        card_sel = (
-            ".HomeCardContainer, [data-rf-test-id='mapHomeCard'], "
-            "[class*='HomeCard'], [class*='homeCard'], [data-listing-id]"
-        )
+        # Wait up to 12 s specifically for the GIS API to respond.
+        # More reliable than time-based waits or scroll tricks.
         try:
-            await page.wait_for_selector(card_sel, timeout=7000)
-        except Exception:
-            pass  # fall through to DOM fallback
+            await asyncio.wait_for(gis_received.wait(), timeout=12.0)
+        except asyncio.TimeoutError:
+            print(f"    [warn] GIS API did not respond in 12s for {market_name}")
 
-        # Scroll progressively to trigger all lazy-loaded cards and GIS API pages.
-        # Do NOT call window.stop() early — it kills pending API responses and
-        # cuts off additional paginated data, causing us to miss listings Redfin has.
-        scroll_positions = [300, 700, 1200, 1800, 2500, 3500, 5000, 7000, 0]
-        prev_count = 0
-        for scroll_y in scroll_positions:
+        # Light scroll to trigger any lazy-loaded secondary API calls
+        for scroll_y in [400, 1200, 2500, 0]:
             await page.evaluate(f"window.scrollTo(0, {scroll_y})")
-            await page.wait_for_timeout(250)
-            # If count stabilized after getting data, we can stop scrolling early
-            if api_homes and len(api_homes) == prev_count and scroll_y > 2000:
-                break
-            prev_count = len(api_homes)
+            await page.wait_for_timeout(200)
 
-        # Final settle wait — let any in-flight API responses finish
-        await page.wait_for_timeout(1200)
+        # Final settle — let any concurrent responses finish
+        await page.wait_for_timeout(800)
 
         # ── Pagination: fetch remaining pages if totalCount > received ──
         # Redfin's GIS API caps at 350 homes per page. If a market has more
@@ -1234,19 +1239,17 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                         if is_condo or is_townhouse:
                             continue
 
-                        # Layer 3: address unit-number check
+                        # Layer 3: address unit-number check (conservative)
                         full_addr = addr or ""
                         if re.search(
-                            r'\bUnit\s*[\w-]+|\bApt\.?\s*[\w-]+|\bSuite\s*[\w-]+|#\s*\d+|\bFl\.?\s*\d',
+                            r'\bUnit\s+\w{2,}|\bApt\.?\s+\w{2,}|\bSuite\s+\w{2,}|#\s*[A-Z]\d|\bFl\.?\s*\d{1,2}\b',
                             full_addr, re.IGNORECASE
                         ):
                             continue
 
                         # Layer 4: listing URL check — Redfin encodes unit/apt in the slug
-                        # e.g. /FL/West-Palm-Beach/1234-Ocean-Blvd-Unit-4B-33401/home/...
-                        # Only match unambiguous condo indicators (NOT state abbreviations like /FL/)
                         link_lower = (link or "").lower()
-                        if re.search(r'/unit-\d|/apt-\d|/unit-[a-z]\d|/apt-[a-z]\d', link_lower):
+                        if re.search(r'/unit-\d{2,}|/apt-\d{2,}|/unit-[a-z]\d|/apt-[a-z]\d', link_lower):
                             continue
 
                     elif "2" not in fb_allowed:  # townhouses allowed but not condos
