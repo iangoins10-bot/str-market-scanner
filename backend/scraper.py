@@ -906,7 +906,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
             print(f"    [API] Parse error ({source_url[:60]}): {e}")
             return [], 0
 
-    # Signal fired the moment GIS data first arrives
+    # Signal fired the moment GIS data arrives via on_response listener
     gis_received = asyncio.Event()
 
     async def on_response(response):
@@ -915,17 +915,14 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
             return
         if "csv" in url_lower:
             return
-        ct = response.headers.get("content-type", "")
-        if "json" not in ct and "javascript" not in ct and "text" not in ct:
-            return
         try:
             text = await response.text()
             homes, total = _parse_gis_response(text, response.url)
             if homes:
                 api_homes.extend(homes)
                 types = {str(h.get("propertyType") or h.get("homeType") or "?") for h in homes[:20]}
-                print(f"    [API] Intercepted {len(homes)} homes (total={total}) from {response.url[:80]} | types: {types}")
-                gis_received.set()   # signal that we have data
+                print(f"    [API intercepted] {len(homes)} homes (total={total}) | types={types}")
+                gis_received.set()
                 if not api_meta["gis_url"] and "/stingray/api/gis" in url_lower:
                     api_meta["gis_url"] = response.url
                     api_meta["total"]   = total
@@ -937,34 +934,98 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-        # Wait up to 12 s specifically for the GIS API to respond.
-        # More reliable than time-based waits or scroll tricks.
+        # Wait briefly for GIS API to fire via on_response
         try:
-            await asyncio.wait_for(gis_received.wait(), timeout=12.0)
+            await asyncio.wait_for(gis_received.wait(), timeout=8.0)
         except asyncio.TimeoutError:
-            print(f"    [warn] GIS API did not respond in 12s for {market_name}")
+            pass  # will try performance-timeline approach below
 
-        # Light scroll to trigger any lazy-loaded secondary API calls
-        for scroll_y in [400, 1200, 2500, 0]:
+        # ── Strategy 2: scan performance timeline for GIS URLs that fired
+        # before/during page load (even if on_response missed them) and
+        # re-fetch them directly from within the page (same-origin, cookies included).
+        if not api_homes:
+            try:
+                perf_gis_urls = await page.evaluate("""() => {
+                    try {
+                        return performance.getEntriesByType('resource')
+                            .map(e => e.name)
+                            .filter(u => u.includes('/stingray/api/gis') && !u.includes('csv'));
+                    } catch(e) { return []; }
+                }""")
+                if perf_gis_urls:
+                    print(f"    [Perf] Found {len(perf_gis_urls)} GIS URL(s) in timeline, re-fetching...")
+                    for gis_u in perf_gis_urls[:3]:
+                        raw = await page.evaluate(f"""async () => {{
+                            try {{
+                                const r = await fetch({json.dumps(gis_u)}, {{credentials:'include'}});
+                                return await r.text();
+                            }} catch(e) {{ return ''; }}
+                        }}""")
+                        if raw:
+                            homes_p, total_p = _parse_gis_response(raw, gis_u)
+                            if homes_p:
+                                api_homes.extend(homes_p)
+                                print(f"    [Perf] Re-fetched {len(homes_p)} homes (total={total_p})")
+                                if not api_meta["gis_url"]:
+                                    api_meta["gis_url"] = gis_u
+                                    api_meta["total"]   = total_p
+            except Exception as e:
+                print(f"    [Perf] Timeline fetch error: {e}")
+
+        # ── Strategy 3: construct and call GIS API directly from page context
+        # Extract the region_id Redfin loaded for this URL, then call /stingray/api/gis
+        if not api_homes:
+            try:
+                direct_raw = await page.evaluate("""async () => {
+                    try {
+                        // Redfin embeds region data in window.__reactProps or the URL
+                        const path = window.location.pathname;
+                        const zipM = path.match(/\\/zipcode\\/(\\d+)/);
+                        const regionId = zipM ? zipM[1] : null;
+
+                        // Try to find the GIS call params from the page's React props
+                        const scripts = Array.from(document.scripts);
+                        for (const s of scripts) {
+                            if (s.src && s.src.includes('gis')) {
+                                return null; // external, skip
+                            }
+                        }
+
+                        // Build a GIS request using what we know
+                        if (regionId) {
+                            const params = new URLSearchParams(window.location.href.split('filter/')[1] || '');
+                            const apiUrl = `/stingray/api/gis?al=1&isRentals=false&num_homes=350&ord=redfin-recommended-asc&page_number=1&sf=1,2,3,4,5,6,10,11&start=0&status=9&v=8&region_id=${regionId}&region_type=6`;
+                            const r = await fetch(apiUrl, {credentials:'include'});
+                            return await r.text();
+                        }
+                    } catch(e) {}
+                    return null;
+                }""")
+                if direct_raw:
+                    homes_d, total_d = _parse_gis_response(direct_raw, "direct-gis")
+                    if homes_d:
+                        api_homes.extend(homes_d)
+                        print(f"    [Direct] Got {len(homes_d)} homes via direct GIS call (total={total_d})")
+                        if not api_meta["gis_url"]:
+                            api_meta["total"] = total_d
+            except Exception as e:
+                print(f"    [Direct] GIS call error: {e}")
+
+        # Light scroll to catch any lazy-triggered API calls
+        for scroll_y in [500, 1500, 0]:
             await page.evaluate(f"window.scrollTo(0, {scroll_y})")
-            await page.wait_for_timeout(200)
+            await page.wait_for_timeout(300)
 
-        # Final settle — let any concurrent responses finish
-        await page.wait_for_timeout(800)
+        await page.wait_for_timeout(600)
 
-        # ── Pagination: fetch remaining pages if totalCount > received ──
-        # Redfin's GIS API caps at 350 homes per page. If a market has more
-        # matching listings we need to request page 2, 3, ... explicitly.
-        # We do this with fetch() inside the page context so Redfin's session
-        # cookies are automatically included — no auth issues.
+        # ── Pagination: fetch remaining pages if totalCount > received ────
         PAGE_SIZE = 350
         if api_meta["gis_url"] and api_meta["total"] > len(api_homes):
-            extra_pages = (api_meta["total"] - 1) // PAGE_SIZE  # 0-indexed pages beyond first
-            print(f"    [Pagination] total={api_meta['total']}, received={len(api_homes)}, fetching {extra_pages} more page(s)")
+            extra_pages = min(10, (api_meta["total"] - 1) // PAGE_SIZE)
+            print(f"    [Pagination] total={api_meta['total']}, have={len(api_homes)}, fetching {extra_pages} more page(s)")
             base_url = api_meta["gis_url"]
             for pg in range(2, extra_pages + 2):
                 start = (pg - 1) * PAGE_SIZE
-                # Build paginated URL by swapping start/page_number params
                 paged_url = re.sub(r'([\?&]start=)\d+', lambda m: m.group(1) + str(start), base_url)
                 if 'start=' not in paged_url:
                     sep = '&' if '?' in paged_url else '?'
@@ -973,55 +1034,22 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                 if 'page_number=' not in paged_url:
                     paged_url += f"&page_number={pg}"
                 try:
-                    raw = await page.evaluate(f"""
-                        async () => {{
-                            try {{
-                                const r = await fetch({json.dumps(paged_url)}, {{credentials: 'include'}});
-                                return await r.text();
-                            }} catch(e) {{ return ''; }}
-                        }}
-                    """)
+                    raw = await page.evaluate(f"""async () => {{
+                        try {{
+                            const r = await fetch({json.dumps(paged_url)}, {{credentials:'include'}});
+                            return await r.text();
+                        }} catch(e) {{ return ''; }}
+                    }}""")
                     if raw:
                         homes_p, _ = _parse_gis_response(raw, paged_url)
                         if homes_p:
                             api_homes.extend(homes_p)
                             print(f"    [Pagination] Page {pg}: +{len(homes_p)} homes")
                         else:
-                            print(f"    [Pagination] Page {pg}: no homes, stopping")
                             break
                 except Exception as e:
                     print(f"    [Pagination] Page {pg} error: {e}")
                     break
-
-        # ── Secondary: try React __reactProps / window.__data ─────
-        if not api_homes:
-            try:
-                react_homes = await page.evaluate("""() => {
-                    // Try window.__PRELOADED_STATE__ or similar
-                    try {
-                        const state = window.__PRELOADED_STATE__ || window.__reactProps || window.__APP_STATE__;
-                        if (state) {
-                            const str = JSON.stringify(state);
-                            const match = str.match(/"homes":\\s*\\[(.*?)\\]/s);
-                            if (match) return JSON.parse('['+match[1]+']');
-                        }
-                    } catch(e) {}
-                    // Try script tags with JSON data
-                    const scripts = Array.from(document.querySelectorAll('script[type="application/json"], script[id*="__NEXT"], script[id*="data"]'));
-                    for (const s of scripts) {
-                        try {
-                            const d = JSON.parse(s.textContent);
-                            const homes = (d?.payload?.homes) || d?.homes || [];
-                            if (homes.length > 0) return homes;
-                        } catch(e) {}
-                    }
-                    return [];
-                }""")
-                if react_homes:
-                    api_homes.extend(react_homes)
-                    print(f"    [React] Extracted {len(react_homes)} homes from page state")
-            except Exception as e:
-                print(f"    [React] State extraction failed: {e}")
 
         # ── Primary: use intercepted API data ──────────────────────
         if api_homes:
@@ -1065,7 +1093,6 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
         else:
             # ── Fallback: parse rendered DOM cards ─────────────────
             print(f"    API interception empty — falling back to DOM parsing")
-            # Try selectors in order of specificity
             card_selectors = [
                 ".HomeCardContainer",
                 "[data-rf-test-id='mapHomeCard']",
@@ -1076,15 +1103,31 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                 "article[class*='home']",
                 "[data-listing-id]",
             ]
+
+            # Scroll through the full page so Redfin lazy-loads all cards,
+            # keep going until the card count stops growing.
+            best_sel = None
+            prev_card_count = 0
+            for scroll_y in [800, 1600, 2800, 4200, 6000, 8000, 11000, 15000, 0]:
+                await page.evaluate(f"window.scrollTo(0, {scroll_y})")
+                await page.wait_for_timeout(400)
+                for sel in card_selectors:
+                    try:
+                        c = await page.query_selector_all(sel)
+                        if len(c) > prev_card_count:
+                            prev_card_count = len(c)
+                            best_sel = sel
+                    except Exception:
+                        continue
+                if scroll_y > 4000 and prev_card_count == prev_card_count:
+                    pass  # keep scrolling
+
             cards = []
-            for sel in card_selectors:
+            if best_sel:
                 try:
-                    cards = await page.query_selector_all(sel)
-                    if cards:
-                        print(f"    Cards found with selector: {sel!r} ({len(cards)})")
-                        break
+                    cards = await page.query_selector_all(best_sel)
                 except Exception:
-                    continue
+                    pass
 
             page_title = await page.title()
             print(f"    DOM fallback: {len(cards)} cards  (page: {page_title!r})")
