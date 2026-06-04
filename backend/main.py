@@ -10,7 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from playwright.async_api import async_playwright
 import httpx
 
-from scraper import scrape_url, build_redfin_url, run_scan
+from scraper import scrape_url, build_redfin_url, run_scan, MARKET_ZIPS
+from discover import discover_state
 
 # ── State abbreviation → URL slug ──────────────────────────────────────────
 STATE_SLUGS = {
@@ -196,7 +197,7 @@ async def trigger_scan():
 async def redfin_search(
     location:   str   = Query(...),
     min_price:  int   = Query(150000),
-    max_price:  int   = Query(650000),
+    max_price:  int   = Query(99999999),
     min_beds:   int   = Query(2),
     max_beds:   int   = Query(6),
     min_baths:  float = Query(1.0),
@@ -240,6 +241,32 @@ async def redfin_search(
 
     except Exception as e:
         print(f"[redfin] ERROR {market_name}: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/discover")
+async def discover_markets(
+    state:          str  = Query(...),
+    include_banned: bool = Query(False),
+):
+    """
+    Discover new STR markets in a state.
+    Returns all cities from regulations.comparent.com for that state,
+    filtered to exclude markets already in the main scanner, sorted by
+    NOO-friendliness score.
+    """
+    # Build set of cities already in the scanner so we can skip them
+    existing = set(MARKET_ZIPS.keys())
+    try:
+        result = await discover_state(
+            state_code=state.upper(),
+            existing_cities=existing,
+            include_banned=include_banned,
+            concurrency=8,
+        )
+        return result
+    except Exception as e:
+        print(f"[discover] ERROR {state}: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
