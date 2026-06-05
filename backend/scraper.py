@@ -1384,6 +1384,20 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     finally:
         await context.close()
 
+    # Final dedup on listings — catches any duplicates produced by multiple
+    # API strategies (on_response + performance timeline + direct call) all
+    # returning overlapping data. Dedup by listing id (hash of addr+price).
+    seen_listing_ids: set = set()
+    unique_listings = []
+    for lst in listings:
+        lid = lst.get("id")
+        if lid and lid in seen_listing_ids:
+            continue
+        if lid:
+            seen_listing_ids.add(lid)
+        unique_listings.append(lst)
+    listings = unique_listings
+
     print(f"    {len(listings)} matched in {market_name}")
     return listings
 

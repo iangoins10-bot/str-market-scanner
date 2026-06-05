@@ -1967,7 +1967,15 @@ async function runScan() {
       }
     });
 
-    PROPS = allProps;
+    // Deduplicate by listing id — multiple markets or API strategies
+    // can return the same property. Keep first occurrence.
+    const _seenIds = new Set();
+    PROPS = allProps.filter(p => {
+      if (!p.id) return true;
+      if (_seenIds.has(p.id)) return false;
+      _seenIds.add(p.id);
+      return true;
+    });
   }
 
   lastScanDomFilter = domFilter;  // record what range this scan covered
