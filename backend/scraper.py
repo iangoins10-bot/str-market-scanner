@@ -414,7 +414,11 @@ def build_redfin_url(market_name, state, criteria, pool=False, home_types=None):
 
     filters = [f"property-type={prop_type_str}"]
     filters.append(f"min-price={criteria.get('min_price', 150000)}")
-    filters.append(f"max-price={criteria.get('max_price', 650000)}")
+    # If max_price is unreasonably high (≥ 5M), omit the max-price filter entirely
+    # so Redfin shows all prices rather than choking on an absurd upper bound.
+    _max_price = criteria.get("max_price", 650000)
+    if _max_price < 5_000_000:
+        filters.append(f"max-price={_max_price}")
     filters.append(f"min-beds={criteria.get('min_beds', 2)}")
     if criteria.get("max_beds", 99) < 99:
         filters.append(f"max-beds={criteria['max_beds']}")
@@ -696,7 +700,14 @@ def build_listing(home, market_name, state, criteria, require_pool, min_yield):
     if only_houses:
         full_addr = str(_val(home.get("address")) or "")
         if re.search(
-            r'\bUnit\s+\w{2,}|\bApt\.?\s+\w{2,}|\bSuite\s+\w{2,}|#\s*[A-Z]\d|\bFl\.?\s*\d{1,2}\b',
+            # Unit/Apt/Suite with 2+ char designator → clear multi-unit
+            # #A1 / #2B style letter+digit → clear multi-unit
+            # #12, #101 etc (2+ digits) → clear multi-unit
+            # "Fl. 3" / "Floor 2" → clear multi-unit
+            # NOT matched: "#1" alone (single digit) — valid SFH address like "123 Main St #1"
+            r'\bUnit\s+\w{2,}|\bApt\.?\s+\w{2,}|\bSuite\s+\w{2,}'
+            r'|#\s*[A-Z]\d|#\s*\d[A-Z]|#\s*\d{2,}'
+            r'|\bFl\.?\s*\d{1,2}\b|\bFloor\s+\d{1,2}\b',
             full_addr, re.IGNORECASE
         ):
             return None
@@ -932,11 +943,16 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
     page.on("response", on_response)
 
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        # networkidle waits until the GIS API response completes (no new network
+        # requests for 500ms). With images/fonts/CSS/analytics blocked by our
+        # route blocker, networkidle fires as soon as the data calls finish —
+        # much more reliable than domcontentloaded + a fixed timeout.
+        await page.goto(url, wait_until="networkidle", timeout=30000)
 
-        # Wait briefly for GIS API to fire via on_response
+        # GIS API response should already be in api_homes via on_response.
+        # Give it one extra tick in case the event fired during the goto.
         try:
-            await asyncio.wait_for(gis_received.wait(), timeout=8.0)
+            await asyncio.wait_for(gis_received.wait(), timeout=2.0)
         except asyncio.TimeoutError:
             pass  # will try performance-timeline approach below
 
@@ -1010,6 +1026,74 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                             api_meta["total"] = total_d
             except Exception as e:
                 print(f"    [Direct] GIS call error: {e}")
+
+        # ── Strategy 4: page-state extractor ─────────────────────
+        # Redfin SSR-renders listing data directly into window globals.
+        # Try all known locations and inline <script> JSON blobs.
+        if not api_homes:
+            try:
+                extracted = await page.evaluate("""() => {
+                    // 1. Known window globals
+                    const candidates = [
+                        window.__PRELOADED_STATE__,
+                        window.__APP_STATE__,
+                        window.__reactProps,
+                        window.__INITIAL_STATE__,
+                    ];
+                    for (const obj of candidates) {
+                        if (!obj) continue;
+                        try {
+                            const s = typeof obj === 'string' ? obj : JSON.stringify(obj);
+                            if (s.includes('listingId') || s.includes('"homes"')) return s;
+                        } catch(e) {}
+                    }
+
+                    // 2. Scan all inline <script> tags for embedded JSON blobs
+                    const scripts = Array.from(document.querySelectorAll('script:not([src])'));
+                    for (const sc of scripts) {
+                        const t = sc.textContent || '';
+                        if (!t.includes('listingId') && !t.includes('"homes"')) continue;
+                        // Try to extract a JSON object/array from the script text
+                        const jsonMatch = t.match(/({[\\s\\S]*"homes"[\\s\\S]*}|\\[[\\s\\S]*"listingId"[\\s\\S]*\\])/);
+                        if (jsonMatch) {
+                            try { JSON.parse(jsonMatch[0]); return jsonMatch[0]; } catch(e) {}
+                        }
+                        // Try window assignment: window.__X__ = { ... } or var X = { ... }
+                        const assignMatch = t.match(/(?:window\\.__\\w+__|var\\s+\\w+)\\s*=\\s*({[\\s\\S]+});?\\s*$/);
+                        if (assignMatch) {
+                            try { JSON.parse(assignMatch[1]); return assignMatch[1]; } catch(e) {}
+                        }
+                    }
+                    return null;
+                }""")
+                if extracted:
+                    try:
+                        blob = json.loads(extracted) if isinstance(extracted, str) else extracted
+                        # Recursively search for a "homes" list inside the blob
+                        def _find_homes(obj, depth=0):
+                            if depth > 8:
+                                return []
+                            if isinstance(obj, list) and obj and isinstance(obj[0], dict) and (
+                                "listingId" in obj[0] or "price" in obj[0] or "beds" in obj[0]
+                            ):
+                                return obj
+                            if isinstance(obj, dict):
+                                if "homes" in obj and isinstance(obj["homes"], list):
+                                    return obj["homes"]
+                                for v in obj.values():
+                                    found = _find_homes(v, depth + 1)
+                                    if found:
+                                        return found
+                            return []
+
+                        state_homes = _find_homes(blob)
+                        if state_homes:
+                            api_homes.extend(state_homes)
+                            print(f"    [PageState] Extracted {len(state_homes)} homes from page globals/scripts")
+                    except Exception as e:
+                        print(f"    [PageState] Parse error: {e}")
+            except Exception as e:
+                print(f"    [PageState] Extractor error: {e}")
 
         # Light scroll to catch any lazy-triggered API calls
         for scroll_y in [500, 1500, 0]:
@@ -1285,7 +1369,9 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                         # Layer 3: address unit-number check (conservative)
                         full_addr = addr or ""
                         if re.search(
-                            r'\bUnit\s+\w{2,}|\bApt\.?\s+\w{2,}|\bSuite\s+\w{2,}|#\s*[A-Z]\d|\bFl\.?\s*\d{1,2}\b',
+                            r'\bUnit\s+\w{2,}|\bApt\.?\s+\w{2,}|\bSuite\s+\w{2,}'
+                            r'|#\s*[A-Z]\d|#\s*\d[A-Z]|#\s*\d{2,}'
+                            r'|\bFl\.?\s*\d{1,2}\b|\bFloor\s+\d{1,2}\b',
                             full_addr, re.IGNORECASE
                         ):
                             continue

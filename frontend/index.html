@@ -1815,7 +1815,7 @@ const HOME_TYPE_MAP = {
   'Single family':    ['1'],
   'Cabin / cottage':  ['1'],
   'Multi-family':     ['3'],
-  'Condo / townhome': ['2'],
+  'Condo / townhome': ['2', '3'],  // label covers both condos and townhouses
 };
 // Redfin property types that map to each code (used for client-side guard)
 const CONDO_PROP_TYPES     = new Set(['CONDO','CONDO_TOWNHOUSE']);
@@ -2021,7 +2021,9 @@ function matches(p, c, activeCodes, mktMap) {
   if (c.bathsMin > 1 && p.baths > 0 && p.baths < c.bathsMin) return false;
   if (c.yieldMin > 0 && p.grossYield > 0 && p.grossYield < c.yieldMin) return false;
   if (p.dom >= 0 && p.dom > domFilter) return false;
-  if (p.dom === -1 && domFilter <= 7)  return false;
+  // dom=-1 means DOM is unknown. If the backend flagged isNew=true (≤1 day),
+  // let it through even the tightest filter. Otherwise reject when filter ≤ 7d.
+  if (p.dom === -1 && !p.isNew && domFilter <= 7) return false;
   if (p.sqft > 0 && (p.sqft < c.sqftMin || p.sqft > c.sqftMax)) return false;
 
   if (mkt && mkt.pool && p.hasPool === false) return false;
