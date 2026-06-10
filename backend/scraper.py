@@ -3,7 +3,9 @@ import json
 import re
 import random
 from datetime import date, datetime
+from urllib.parse import quote
 from playwright.async_api import async_playwright
+import httpx
 
 # ── ZIP code lookup for known STR markets ──────────────────────
 MARKET_ZIPS = {
@@ -399,7 +401,141 @@ def _zip_lookup(market_name):
     """Case-insensitive ZIP code lookup — O(1) via pre-built lowercase map."""
     return MARKET_ZIPS.get(market_name) or _ZIPS_LOWER.get(market_name.lower())
 
-def build_redfin_url(market_name, state, criteria, pool=False, home_types=None):
+# ── Redfin region resolver ──────────────────────────────────────────────────
+# A single ZIP only covers part of a city. Redfin's own search for "Sevierville,
+# TN" spans every ZIP in the city — which is why a manual search shows far more
+# listings than a one-ZIP scan. We resolve each market to Redfin's canonical
+# city/county region (the same thing Redfin shows you) via its autocomplete API,
+# so the scanner sees exactly what you see.
+import os as _os
+_REGION_CACHE: dict = {}
+_REGION_CACHE_FILE = _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), "..", "data", "region_cache.json"
+)
+
+def _load_region_cache():
+    global _REGION_CACHE
+    if _REGION_CACHE:
+        return
+    try:
+        with open(_REGION_CACHE_FILE) as f:
+            raw = json.load(f)
+        _REGION_CACHE = {tuple(k.split("|", 1)): v for k, v in raw.items()}
+    except Exception:
+        _REGION_CACHE = {}
+
+def _save_region_cache():
+    try:
+        _os.makedirs(_os.path.dirname(_REGION_CACHE_FILE), exist_ok=True)
+        serial = {f"{k[0]}|{k[1]}": v for k, v in _REGION_CACHE.items()}
+        with open(_REGION_CACHE_FILE, "w") as f:
+            json.dump(serial, f, indent=2)
+    except Exception as e:
+        print(f"    [region] cache save failed: {e}")
+
+def _pick_region(hrefs, state):
+    """Choose the best region path from candidate hrefs/paths.
+    Prefer whole-city, then county, then neighborhood, then any in-state.
+    Returns a path like '/city/17180/TN/Sevierville' (domain stripped)."""
+    st = (state or "").upper().strip()
+    city_url = county_url = hood_url = any_url = None
+    for u in hrefs or []:
+        if not u:
+            continue
+        # strip domain → path
+        if u.startswith("http"):
+            u = "/" + u.split("/", 3)[-1] if u.count("/") >= 3 else u
+        # skip non-region links (agents, schools, listings, etc.)
+        if "/real-estate/agents" in u or "/school/" in u:
+            continue
+        in_state = (f"/{st}/" in u) if st else True
+        if "/city/" in u and in_state and city_url is None:
+            city_url = u
+        elif "/county/" in u and in_state and county_url is None:
+            county_url = u
+        elif "/neighborhood/" in u and in_state and hood_url is None:
+            hood_url = u
+        elif any_url is None and in_state and any(
+            seg in u for seg in ("/city/", "/county/", "/neighborhood/")
+        ):
+            any_url = u
+    return city_url or county_url or hood_url or any_url
+
+async def resolve_region_url(market_name, state, browser=None):
+    """
+    Return Redfin's canonical region path for a market, e.g.
+    '/city/17180/TN/Sevierville', so we search the WHOLE city (all ZIPs) instead
+    of one ZIP. Resolved by driving Redfin's real search box inside a Playwright
+    page and reading the autocomplete dropdown's city link from the DOM — the raw
+    autocomplete API is bot-blocked (403), but the genuine UI request is not.
+    Cached to disk — each market resolved at most once, ever. None → use ZIP.
+    """
+    _load_region_cache()
+    key = (market_name.lower().strip(), (state or "").upper().strip())
+    if key in _REGION_CACHE:
+        return _REGION_CACHE[key]
+    if browser is None:
+        return None   # cannot resolve without a browser; caller falls back to ZIP
+
+    query = f"{market_name}, {state}" if state else market_name
+    context = None
+    try:
+        context = await browser.new_context(
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"),
+            viewport={"width": 1280, "height": 800},
+        )
+        await context.add_init_script(STEALTH_JS)
+        page = await context.new_page()
+        # NOTE: do NOT block resources here — the search box needs the page's JS.
+        await page.goto("https://www.redfin.com/", wait_until="domcontentloaded", timeout=25000)
+
+        # Find and type into the search box; the autocomplete dropdown renders
+        # region links (city/county/neighborhood) directly in the DOM.
+        box = None
+        for sel in ("input#search-box-input",
+                    "input[data-rf-test-name='search-box-input']",
+                    "input[name='searchInputBox']",
+                    "input[type='search']"):
+            try:
+                if await page.query_selector(sel):
+                    box = sel
+                    break
+            except Exception:
+                pass
+        if not box:
+            raise RuntimeError("search box not found")
+
+        await page.fill(box, query)
+        # Wait for the dropdown to populate with /city/ links.
+        hrefs = []
+        for _ in range(20):  # up to ~5s
+            await page.wait_for_timeout(250)
+            hrefs = await page.evaluate(
+                """() => Array.from(document.querySelectorAll('.item-row a[href]'))
+                        .map(a => a.getAttribute('href'))
+                        .filter(h => h && /\\/(city|county|neighborhood)\\/\\d+\\//.test(h))"""
+            )
+            if any("/city/" in h for h in hrefs):
+                break
+
+        best = _pick_region(hrefs, state)
+        _REGION_CACHE[key] = best
+        _save_region_cache()
+        print(f"    [region] {market_name}, {state} → {best or 'no match (using ZIP)'}")
+        return best
+    except Exception as e:
+        print(f"    [region] resolve failed {market_name}, {state}: {e}")
+        _REGION_CACHE[key] = None
+        _save_region_cache()
+        return None
+    finally:
+        if context is not None:
+            try: await context.close()
+            except Exception: pass
+
+
+def build_redfin_url(market_name, state, criteria, pool=False, home_types=None, region_url=None):
     """Build a Redfin filter URL for a given market and criteria."""
     zip_code = _zip_lookup(market_name)
 
@@ -432,6 +568,12 @@ def build_redfin_url(market_name, state, criteria, pool=False, home_types=None):
     filters.append("status=active")
 
     filter_str = ",".join(filters)
+
+    # Prefer Redfin's canonical city/county region (covers the WHOLE city, all
+    # ZIPs) when we resolved one — this is the fix for "manual search shows more".
+    if region_url and any(seg in region_url for seg in ("/city/", "/county/", "/neighborhood/")):
+        base = region_url if region_url.startswith("http") else f"https://www.redfin.com{region_url}"
+        return f"{base}/filter/{filter_str}"
 
     if zip_code:
         return f"https://www.redfin.com/zipcode/{zip_code}/filter/{filter_str}"
@@ -614,6 +756,36 @@ def _val(field):
         return field.get("value")
     return field
 
+_STREET_SUFFIXES = (
+    "st","street","rd","road","dr","drive","ln","lane","ave","avenue","way","ct",
+    "court","cir","circle","blvd","boulevard","pl","place","ter","terrace","trl",
+    "trail","trce","trace","pkwy","parkway","hwy","highway","loop","run","pass",
+    "path","pt","point","cv","cove","row","walk","bnd","bend","xing","crossing",
+)
+
+def _normalize_addr(addr):
+    """
+    Clean a raw street address:
+      • collapse repeated whitespace
+      • remove an accidentally duplicated trailing street suffix
+        ("2947 Patty View Way Way" → "2947 Patty View Way")
+      • title-case ALL-CAPS addresses while leaving mixed case alone
+    """
+    if not addr:
+        return addr
+    a = re.sub(r"\s+", " ", str(addr)).strip()
+    if not a:
+        return a
+    # Collapse an immediately duplicated final token if it's a street suffix
+    toks = a.split(" ")
+    if len(toks) >= 2 and toks[-1].lower() == toks[-2].lower() and toks[-1].lower().strip(".") in _STREET_SUFFIXES:
+        toks = toks[:-1]
+        a = " ".join(toks)
+    # Title-case if the string is all uppercase (Redfin sometimes shouts addresses)
+    if a.isupper():
+        a = a.title()
+    return a
+
 def _stable_id(home, addr):
     """
     Build a STABLE listing identifier that does NOT change when the price changes.
@@ -776,6 +948,7 @@ def build_listing(home, market_name, state, criteria, require_pool, min_yield):
     # Address — Redfin gives "123 Main St, City, ST ZIP"
     addr_raw = _val(home.get("address")) or ""
     addr = addr_raw.split(",")[0].strip() if "," in addr_raw else addr_raw.strip()
+    addr = _normalize_addr(addr)
     if not addr:
         addr = "Unknown"
 
@@ -1312,7 +1485,7 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                     if min_baths > 1 and baths and baths < min_baths:
                         continue
 
-                    addr = extract_address(text, lines)
+                    addr = _normalize_addr(extract_address(text, lines))
 
                     sqft_match = re.search(r"([\d,]+)\s*[Ss]q", text)
                     sqft = int(sqft_match.group(1).replace(",", "")) if sqft_match else 0

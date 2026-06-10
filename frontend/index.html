@@ -764,6 +764,43 @@ input:focus, select:focus {
 .si-hist { font-size: 11px; color: var(--ink3); font-family: var(--mono); }
 .src-box { font-size: 13px; color: var(--ink2); line-height: 1.8; background: var(--card); border: 1.5px solid var(--edge); border-radius: var(--rs); padding: 14px 16px; box-shadow: var(--sh); }
 
+/* schedule run controls */
+.si-act { display:flex; gap:6px; }
+.si-btn { font-size:11px; font-family:var(--sans); font-weight:600; padding:5px 10px; border-radius:6px; border:1px solid var(--edge2); background:var(--card2); color:var(--ink2); cursor:pointer; transition:.12s; }
+.si-btn:hover { background:var(--bg3); color:var(--ink); }
+.si-btn.danger:hover { background:var(--rd-bg); color:var(--rd); border-color:var(--rd); }
+.si-next { font-size:10px; color:var(--gr); font-family:var(--mono); margin-top:3px; }
+.sched-form { background:var(--card); border:1.5px solid var(--edge); border-radius:var(--r); padding:16px 18px; box-shadow:var(--sh); margin-bottom:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
+.sched-form .cf { display:flex; flex-direction:column; gap:5px; }
+.sched-form select, .sched-form input { padding:8px 10px; border:1px solid var(--edge2); border-radius:6px; font-family:var(--sans); font-size:12px; background:var(--card); }
+.sched-create-btn { padding:9px 16px; border:none; border-radius:7px; background:var(--ink); color:#fff; font-family:var(--sans); font-size:12px; font-weight:600; cursor:pointer; transition:.12s; }
+.sched-create-btn:hover { background:#000; }
+
+/* ━━━ NOTIFICATIONS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.notif-wrap { position:relative; }
+.notif-bell { position:relative; background:var(--card); border:1px solid var(--edge2); border-radius:9px; width:34px; height:34px; cursor:pointer; font-size:15px; line-height:1; display:flex; align-items:center; justify-content:center; transition:.12s; }
+.notif-bell:hover { background:var(--bg3); }
+.notif-badge { position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; padding:0 4px; border-radius:9px; background:var(--rd); color:#fff; font-size:10px; font-weight:700; font-family:var(--mono); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px var(--bg); }
+.notif-panel { position:absolute; top:42px; right:0; width:340px; max-height:440px; background:var(--card); border:1.5px solid var(--edge2); border-radius:var(--r); box-shadow:var(--sh2); z-index:600; display:none; overflow:hidden; }
+.notif-panel.open { display:block; }
+.notif-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--edge); font-size:13px; font-weight:700; }
+.notif-perm { font-size:10px; font-weight:600; padding:4px 9px; border-radius:6px; border:1px solid var(--bl-bdr); background:var(--bl-bg); color:var(--bl); cursor:pointer; }
+.notif-clear { font-size:11px; font-weight:500; padding:3px 8px; border-radius:6px; border:1px solid var(--edge2); background:var(--card2); color:var(--ink2); cursor:pointer; }
+.notif-clear:hover { background:var(--bg3); }
+.notif-list { max-height:380px; overflow-y:auto; }
+.notif-item { padding:11px 14px; border-bottom:1px solid var(--edge); cursor:pointer; transition:.1s; }
+.notif-item:hover { background:var(--card2); }
+.notif-item.unread { background:var(--bl-bg); }
+.notif-item.unread:hover { background:#e3edfd; }
+.notif-i-title { font-size:12px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:6px; }
+.notif-i-body { font-size:11px; color:var(--ink2); margin-top:3px; line-height:1.45; }
+.notif-i-time { font-size:10px; color:var(--ink3); font-family:var(--mono); margin-top:4px; }
+.notif-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.notif-dot.drop { background:var(--rd); }
+.notif-dot.scan { background:var(--gr); }
+.notif-dot.error { background:var(--am); }
+.notif-empty { padding:28px 14px; text-align:center; color:var(--ink3); font-size:12px; }
+
 /* ━━━ MODAL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 .backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;
@@ -901,6 +938,23 @@ input:focus, select:focus {
   <span class="spill demo" id="demo-tag" style="display:none">⚠ backend offline</span>
   <div class="hdr-r">
     <span class="last-run" id="last-run">—</span>
+    <div class="notif-wrap">
+      <button class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()" title="Notifications">
+        🔔<span class="notif-badge" id="notif-badge" style="display:none">0</span>
+      </button>
+      <div class="notif-panel" id="notif-panel">
+        <div class="notif-head">
+          <span>Notifications</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="notif-perm" id="notif-perm" onclick="requestNotifPermission()" style="display:none">Enable alerts</button>
+            <button class="notif-clear" onclick="clearNotifs()">Clear</button>
+          </div>
+        </div>
+        <div class="notif-list" id="notif-list">
+          <div class="notif-empty">No notifications yet.</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1155,28 +1209,43 @@ input:focus, select:focus {
 
 <!-- ═══ SCHEDULES TAB ════════════════════════════════════════ -->
 <div id="tab-schedules" class="panel">
+  <p class="slabel" style="margin-bottom:12px">Create a scheduled scan</p>
+  <div class="sched-form">
+    <div class="cf">
+      <span class="flabel">Market</span>
+      <select id="sf-market"></select>
+    </div>
+    <div class="cf">
+      <span class="flabel">Frequency</span>
+      <select id="sf-freq" onchange="onFreqChange()">
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="hourly">Hourly</option>
+      </select>
+    </div>
+    <div class="cf" id="sf-dow-wrap" style="display:none">
+      <span class="flabel">Day</span>
+      <select id="sf-dow">
+        <option value="mon">Monday</option><option value="tue">Tuesday</option>
+        <option value="wed">Wednesday</option><option value="thu">Thursday</option>
+        <option value="fri">Friday</option><option value="sat">Saturday</option>
+        <option value="sun">Sunday</option>
+      </select>
+    </div>
+    <div class="cf" id="sf-time-wrap">
+      <span class="flabel">Time</span>
+      <input type="time" id="sf-time" value="08:00">
+    </div>
+    <div class="cf">
+      <span class="flabel">&nbsp;</span>
+      <button class="sched-create-btn" onclick="createSchedule()">+ Add schedule</button>
+    </div>
+  </div>
+  <p style="font-size:11px;color:var(--ink3);margin:-6px 0 16px">Uses your current Markets &amp; Criteria filters. Scheduled scans run automatically on the backend and notify you of new price cuts.</p>
+
   <p class="slabel" style="margin-bottom:12px">Configured scans</p>
-  <div class="scheds">
-    <div class="si">
-      <div>
-        <div class="si-name">Daily — 6:00 AM MT</div>
-        <div class="si-mkts" id="sched-mkts">—</div>
-      </div>
-      <div class="si-r">
-        <span class="si-hist" id="sched-hist">—</span>
-        <button class="tog on" onclick="this.classList.toggle('on')"><div class="tog-t"></div></button>
-      </div>
-    </div>
-    <div class="si">
-      <div>
-        <div class="si-name">Weekly — Mon 7:00 AM MT</div>
-        <div class="si-mkts">Westminster CO · Denver metro</div>
-      </div>
-      <div class="si-r">
-        <span class="si-hist">Mon Apr 1 · 6 results</span>
-        <button class="tog" onclick="this.classList.toggle('on')"><div class="tog-t"></div></button>
-      </div>
-    </div>
+  <div class="scheds" id="scheds-list">
+    <div class="notif-empty" id="scheds-empty">No schedules yet — create one above.</div>
   </div>
   <div class="divider"></div>
   <p class="slabel">Data source</p>
@@ -1582,7 +1651,11 @@ async function init() {
   buildChips();
   await checkBackend();
   // Populate the price-drop badge in the background (non-blocking)
-  if (backendOnline) loadPriceDrops().catch(()=>{});
+  if (backendOnline) {
+    loadPriceDrops().catch(()=>{});
+    startNotifPolling();
+    renderNotifPermBtn();
+  }
 }
 
 // ─── BACKEND ──────────────────────────────────────────────────
@@ -1622,6 +1695,7 @@ function switchTab(name) {
   if (name==='map')        { renderMap(); }
   if (name==='discover')   initDiscoverState();
   if (name==='pricedrops') loadPriceDrops();
+  if (name==='schedules')  { updateSchedMkts(); loadSchedules(); }
 }
 
 // ─── PRICE DROPS ──────────────────────────────────────────────
@@ -1726,6 +1800,267 @@ async function checkPriceDrops() {
     btn.disabled = false; btn.textContent = '🔄 Check for new drops';
     scan.style.display = 'none';
   }
+}
+
+// ─── SCHEDULED SCANS ──────────────────────────────────────────
+function onFreqChange() {
+  const f = document.getElementById('sf-freq').value;
+  document.getElementById('sf-dow-wrap').style.display  = (f === 'weekly') ? 'flex' : 'none';
+  document.getElementById('sf-time-wrap').style.display = (f === 'hourly') ? 'none' : 'flex';
+}
+
+function _criteriaForBackend() {
+  const c = getCriteria();
+  return {
+    min_price: c.priceMin, max_price: c.priceMax,
+    min_beds: c.bedsMin,   max_beds: c.bedsMax,
+    min_baths: c.bathsMin, max_dom: 90,
+    min_sqft: c.sqftMin,   max_sqft: c.sqftMax,
+    keywords: (c.keywords || []).join(','),
+    home_types: '1,2,3',
+  };
+}
+
+async function createSchedule() {
+  if (!backendOnline) { toast('Backend offline — start it to create schedules'); return; }
+  const mv = document.getElementById('sf-market').value;
+  if (!mv) { toast('Pick a market first'); return; }
+  const [market, state] = mv.split('|');
+  const freq = document.getElementById('sf-freq').value;
+  const time = document.getElementById('sf-time').value || '08:00';
+  const [hh, mm] = time.split(':').map(Number);
+  const payload = {
+    market, state, frequency: freq,
+    hour: hh || 8, minute: mm || 0,
+    day_of_week: document.getElementById('sf-dow').value,
+    criteria: _criteriaForBackend(),
+    pool: false, enabled: true,
+  };
+  try {
+    const r = await fetch(`${BACKEND}/api/schedules`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    toast(`Scheduled ${market}, ${state} ✦`, true);
+    loadSchedules();
+  } catch (e) {
+    console.error('createSchedule failed', e);
+    toast('⚠ Could not create schedule');
+  }
+}
+
+async function loadSchedules() {
+  const list  = document.getElementById('scheds-list');
+  const empty = document.getElementById('scheds-empty');
+  if (!backendOnline) {
+    list.innerHTML = `<div class="notif-empty">Backend offline — start it to manage schedules.</div>`;
+    return;
+  }
+  try {
+    const r = await fetch(`${BACKEND}/api/schedules`);
+    const data = await r.json();
+    renderSchedules(data.schedules || []);
+  } catch (e) {
+    console.error('loadSchedules failed', e);
+    list.innerHTML = `<div class="notif-empty">Could not load schedules.</div>`;
+  }
+}
+
+function _fmtNext(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  } catch { return ''; }
+}
+
+function renderSchedules(schedules) {
+  const list = document.getElementById('scheds-list');
+  if (!schedules.length) {
+    list.innerHTML = `<div class="notif-empty" id="scheds-empty">No schedules yet — create one above.</div>`;
+    return;
+  }
+  list.innerHTML = schedules.map(s => {
+    const hist = s.lastRun
+      ? `${_fmtNext(s.lastRun)} · ${s.lastCount||0} listings${s.lastDrops ? ' · '+s.lastDrops+' drops' : ''}`
+      : 'Not run yet';
+    const next = (s.enabled && s.nextRun) ? `Next: ${_fmtNext(s.nextRun)}` : (s.enabled ? '' : 'Paused');
+    return `
+      <div class="si">
+        <div>
+          <div class="si-name">${s.market}, ${s.state} <span style="font-weight:400;color:var(--ink3)">— ${s.describe||''}</span></div>
+          <div class="si-mkts">${hist}</div>
+          <div class="si-next">${next}</div>
+        </div>
+        <div class="si-r">
+          <div class="si-act">
+            <button class="si-btn" onclick="runScheduleNow('${s.id}', this)">Run now</button>
+            <button class="si-btn danger" onclick="deleteSchedule('${s.id}')">Delete</button>
+          </div>
+          <button class="tog ${s.enabled?'on':''}" onclick="toggleSchedule('${s.id}', ${!s.enabled})"><div class="tog-t"></div></button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function toggleSchedule(id, enabled) {
+  try {
+    await fetch(`${BACKEND}/api/schedules/${id}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ enabled }),
+    });
+    loadSchedules();
+  } catch (e) { console.error(e); toast('⚠ Could not update schedule'); }
+}
+
+async function deleteSchedule(id) {
+  try {
+    await fetch(`${BACKEND}/api/schedules/${id}`, { method: 'DELETE' });
+    toast('Schedule removed');
+    loadSchedules();
+  } catch (e) { console.error(e); toast('⚠ Could not delete schedule'); }
+}
+
+async function runScheduleNow(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '◌ Running…'; }
+  try {
+    const r = await fetch(`${BACKEND}/api/schedules/${id}/run`, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) toast('⚠ ' + d.error);
+    else toast(`Scan done · ${d.count||0} listings${d.drops ? ' · '+d.drops+' price drops' : ''} ✦`, true);
+    loadSchedules();
+    pollNotifications();
+  } catch (e) {
+    console.error('runScheduleNow failed', e);
+    toast('⚠ Scan failed');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run now'; }
+  }
+}
+
+// ─── BROWSER NOTIFICATIONS ────────────────────────────────────
+let _notifSeen = new Set(JSON.parse(localStorage.getItem('str_notif_seen') || '[]'));
+let _notifPollTimer = null;
+
+function _saveNotifSeen() {
+  localStorage.setItem('str_notif_seen', JSON.stringify([..._notifSeen].slice(-200)));
+}
+
+function toggleNotifPanel() {
+  const p = document.getElementById('notif-panel');
+  const opening = !p.classList.contains('open');
+  p.classList.toggle('open');
+  if (opening) {
+    renderNotifPermBtn();
+    pollNotifications();
+    // Mark all as read on the backend after viewing
+    fetch(`${BACKEND}/api/notifications/read`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'
+    }).then(()=>setTimeout(()=>{ updateNotifBadge(0); }, 400)).catch(()=>{});
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.notif-wrap');
+  const panel = document.getElementById('notif-panel');
+  if (wrap && panel && panel.classList.contains('open') && !wrap.contains(e.target)) {
+    panel.classList.remove('open');
+  }
+});
+
+function renderNotifPermBtn() {
+  const btn = document.getElementById('notif-perm');
+  if (!btn || !('Notification' in window)) return;
+  btn.style.display = (Notification.permission === 'default') ? 'inline-block' : 'none';
+}
+
+async function requestNotifPermission() {
+  if (!('Notification' in window)) { toast('Browser notifications not supported'); return; }
+  try {
+    const perm = await Notification.requestPermission();
+    renderNotifPermBtn();
+    if (perm === 'granted') toast('Browser alerts enabled ✦', true);
+  } catch (e) { console.error(e); }
+}
+
+function updateNotifBadge(n) {
+  const b = document.getElementById('notif-badge');
+  if (!b) return;
+  if (n > 0) { b.style.display = 'flex'; b.textContent = n > 99 ? '99+' : n; }
+  else b.style.display = 'none';
+}
+
+function _notifTimeAgo(iso) {
+  try {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60)   return 'just now';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    return Math.floor(diff/86400) + 'd ago';
+  } catch { return ''; }
+}
+
+async function pollNotifications() {
+  if (!backendOnline) return;
+  try {
+    const r = await fetch(`${BACKEND}/api/notifications`);
+    const data = await r.json();
+    const notifs = data.notifications || [];
+    updateNotifBadge(data.unread || 0);
+    renderNotifs(notifs);
+
+    // Fire native browser notifications for newly-seen items
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const fresh = notifs.filter(n => !_notifSeen.has(n.id));
+      // newest last so the most recent ends up on top
+      fresh.slice(0, 5).reverse().forEach(n => {
+        try {
+          const note = new Notification(n.title, { body: n.body, tag: n.id, icon: '' });
+          note.onclick = () => {
+            window.focus();
+            if (n.data && n.data.url) window.open(n.data.url, '_blank');
+          };
+        } catch (e) {}
+      });
+    }
+    notifs.forEach(n => _notifSeen.add(n.id));
+    _saveNotifSeen();
+  } catch (e) { /* silent */ }
+}
+
+function renderNotifs(notifs) {
+  const list = document.getElementById('notif-list');
+  if (!list) return;
+  if (!notifs.length) {
+    list.innerHTML = `<div class="notif-empty">No notifications yet.</div>`;
+    return;
+  }
+  list.innerHTML = notifs.map(n => {
+    const dotClass = n.type === 'price-drop' ? 'drop' : (n.type === 'error' ? 'error' : 'scan');
+    const url = (n.data && n.data.url) ? n.data.url : '';
+    const click = url ? `onclick="window.open('${url}','_blank')"` : '';
+    return `
+      <div class="notif-item ${n.read ? '' : 'unread'}" ${click} style="${url?'cursor:pointer':''}">
+        <div class="notif-i-title"><span class="notif-dot ${dotClass}"></span>${n.title}</div>
+        <div class="notif-i-body">${n.body || ''}</div>
+        <div class="notif-i-time">${_notifTimeAgo(n.ts)}</div>
+      </div>`;
+  }).join('');
+}
+
+async function clearNotifs() {
+  try {
+    await fetch(`${BACKEND}/api/notifications`, { method: 'DELETE' });
+    renderNotifs([]);
+    updateNotifBadge(0);
+  } catch (e) { console.error(e); }
+}
+
+function startNotifPolling() {
+  if (_notifPollTimer) clearInterval(_notifPollTimer);
+  pollNotifications();
+  _notifPollTimer = setInterval(pollNotifications, 60000);   // every 60s
 }
 
 // ─── DISCOVER MARKETS ─────────────────────────────────────────
@@ -2121,8 +2456,13 @@ function deleteMkt(i) {
   toast(`${m.name} removed`);
 }
 function updateSchedMkts() {
-  document.getElementById('sched-mkts').textContent =
-    MARKETS.filter(m=>m.sel).map(m=>`${m.name} ${m.state}`).join(' · ') || 'No markets selected';
+  // Populate the schedule-form market dropdown from the user's markets.
+  const sel = document.getElementById('sf-market');
+  if (!sel) return;
+  const prev = sel.value;
+  const opts = MARKETS.map(m => `<option value="${m.name}|${m.state}">${m.name}, ${m.state}</option>`).join('');
+  sel.innerHTML = opts;
+  if (prev && MARKETS.some(m => (m.name+'|'+m.state) === prev)) sel.value = prev;
 }
 
 // ─── MARKET MODAL ─────────────────────────────────────────────

@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from playwright.async_api import async_playwright
 import httpx
 
-from scraper import scrape_url, build_redfin_url, run_scan, MARKET_ZIPS
+from scraper import scrape_url, build_redfin_url, run_scan, MARKET_ZIPS, resolve_region_url
 from discover import discover_state
 import price_tracker
+from scheduler import ScanScheduler
+import scheduler as sched_mod
 
 # ── State abbreviation → URL slug ──────────────────────────────────────────
 STATE_SLUGS = {
@@ -129,10 +131,42 @@ DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data
 _playwright_instance = None
 _browser             = None
 _scrape_sem          = None   # limits concurrent scrapes to avoid RAM/rate-limit blowup
+_scheduler           = None   # ScanScheduler instance (real scheduled scans)
+
+
+async def run_market_scan(market: str, state: str, criteria: dict,
+                          pool: bool = False, min_yield: float = 0.0):
+    """Resolve the whole-city region, scrape, and update price history.
+    Returns the annotated listing list. Shared by the HTTP endpoint and the
+    background scheduler so both behave identically."""
+    region_url = await resolve_region_url(market, state, browser=_browser)
+    url = build_redfin_url(market, state, criteria, pool=pool,
+                           home_types=criteria.get("home_types", "1,2,3"),
+                           region_url=region_url)
+    print(f"[scan] {market}: {url}")
+    async with _scrape_sem:
+        results = await scrape_url(
+            _browser, url, market, state, criteria,
+            require_pool=pool, min_yield=min_yield,
+        )
+    if isinstance(results, dict) and "listings" in results:
+        listings = results["listings"]
+    elif isinstance(results, list):
+        listings = results
+    else:
+        listings = []
+    annotated = await asyncio.get_event_loop().run_in_executor(
+        None, price_tracker.update_prices, listings
+    )
+    if isinstance(results, dict) and "listings" in results:
+        results["listings"] = annotated
+        return results
+    return annotated
+
 
 @asynccontextmanager
 async def lifespan(app):
-    global _playwright_instance, _browser, _scrape_sem
+    global _playwright_instance, _browser, _scrape_sem, _scheduler
     _scrape_sem = asyncio.Semaphore(4)   # max 4 markets scraping simultaneously
     _playwright_instance = await async_playwright().start()
     _browser = await _playwright_instance.chromium.launch(
@@ -146,8 +180,12 @@ async def lifespan(app):
         ],
     )
     print("[startup] Playwright browser ready")
+    _scheduler = ScanScheduler(run_market_scan)
+    _scheduler.start()
     yield
     print("[shutdown] Closing browser…")
+    if _scheduler:
+        _scheduler.shutdown()
     await _browser.close()
     await _playwright_instance.stop()
 
@@ -227,28 +265,10 @@ async def redfin_search(
         "home_types": home_types,
     }
 
-    url = build_redfin_url(market_name, state, criteria, pool=pool, home_types=home_types)
-    print(f"[redfin] {market_name}: {url}")
-
     try:
-        # Semaphore ensures at most 4 Redfin pages open simultaneously
-        async with _scrape_sem:
-            results = await scrape_url(
-                _browser, url, market_name, state, criteria,
-                require_pool=pool,
-                min_yield=min_yield,
-            )
-        # Track prices and annotate drops — runs in thread to avoid blocking event loop
-        if isinstance(results, list):
-            results = await asyncio.get_event_loop().run_in_executor(
-                None, price_tracker.update_prices, results
-            )
-        elif isinstance(results, dict) and "listings" in results:
-            results["listings"] = await asyncio.get_event_loop().run_in_executor(
-                None, price_tracker.update_prices, results["listings"]
-            )
-        return results
-
+        # Resolves whole-city region, scrapes, and updates price history.
+        return await run_market_scan(market_name, state, criteria,
+                                     pool=pool, min_yield=min_yield)
     except Exception as e:
         print(f"[redfin] ERROR {market_name}: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -400,3 +420,73 @@ async def get_regulations(city: str = Query(...), state: str = Query(...)):
     except Exception as e:
         print(f"[regs] ERROR {city}, {state}: {e}")
         return JSONResponse(status_code=500, content={'error': str(e), 'sourceUrl': source_url})
+
+
+# ── Scheduled scans ─────────────────────────────────────────────────────────
+from fastapi import Body, Path
+
+
+@app.get("/api/schedules")
+def list_schedules():
+    return {"schedules": _scheduler.list() if _scheduler else []}
+
+
+@app.post("/api/schedules")
+def create_schedule(payload: dict = Body(...)):
+    if not _scheduler:
+        return JSONResponse(status_code=503, content={"error": "scheduler not ready"})
+    if not (payload.get("market") and payload.get("state")):
+        return JSONResponse(status_code=400, content={"error": "market and state are required"})
+    s = _scheduler.create(payload)
+    return {"schedule": s, "nextRun": _scheduler.next_run(s["id"])}
+
+
+@app.put("/api/schedules/{sid}")
+def update_schedule(sid: str = Path(...), payload: dict = Body(...)):
+    if not _scheduler:
+        return JSONResponse(status_code=503, content={"error": "scheduler not ready"})
+    s = _scheduler.update(sid, payload)
+    if s is None:
+        return JSONResponse(status_code=404, content={"error": "schedule not found"})
+    return {"schedule": s, "nextRun": _scheduler.next_run(sid)}
+
+
+@app.delete("/api/schedules/{sid}")
+def delete_schedule(sid: str = Path(...)):
+    if not _scheduler:
+        return JSONResponse(status_code=503, content={"error": "scheduler not ready"})
+    ok = _scheduler.delete(sid)
+    if not ok:
+        return JSONResponse(status_code=404, content={"error": "schedule not found"})
+    return {"status": "deleted"}
+
+
+@app.post("/api/schedules/{sid}/run")
+async def run_schedule_now(sid: str = Path(...)):
+    if not _scheduler:
+        return JSONResponse(status_code=503, content={"error": "scheduler not ready"})
+    result = await _scheduler.run_now(sid)
+    return result
+
+
+# ── Notifications (polled by the browser for push alerts) ───────────────────
+@app.get("/api/notifications")
+def get_notifications(unread_only: bool = Query(False)):
+    notifs = sched_mod.load_notifications()
+    if unread_only:
+        notifs = [n for n in notifs if not n.get("read")]
+    unread = sum(1 for n in sched_mod.load_notifications() if not n.get("read"))
+    return {"notifications": notifs, "unread": unread}
+
+
+@app.post("/api/notifications/read")
+def read_notifications(payload: dict = Body(default={})):
+    ids = (payload or {}).get("ids")
+    sched_mod.mark_notifications_read(ids)
+    return {"status": "ok"}
+
+
+@app.delete("/api/notifications")
+def clear_notifications():
+    sched_mod.clear_notifications()
+    return {"status": "cleared"}
