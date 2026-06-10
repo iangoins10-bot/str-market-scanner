@@ -14,37 +14,44 @@
   --mono:   'DM Mono', monospace;
   --serif:  'Instrument Serif', serif;
 
-  --bg:     #f2f1ed;
-  --card:   #ffffff;
-  --card2:  #fafaf8;
-  --bg3:    #eeede8;
-  --bg4:    #e5e4de;
+  /* ── RISE dark theme ───────────────────────────────────── */
+  --bg:     #0a0a0c;   /* app canvas (near-black) */
+  --card:   #151518;   /* elevated surface */
+  --card2:  #1c1c20;   /* secondary surface */
+  --bg3:    #232328;   /* inset / hover */
+  --bg4:    #2c2c33;   /* stronger inset */
 
-  --ink:    #18181b;
-  --ink2:   #52525b;
-  --ink3:   #a1a1aa;
+  --ink:    #f4f4f5;   /* primary text (near-white) */
+  --ink2:   #a1a1aa;   /* secondary text */
+  --ink3:   #71717a;   /* muted text */
 
-  --edge:   #e4e4e7;
-  --edge2:  #d4d4d8;
+  --edge:   #26262b;   /* hairline border */
+  --edge2:  #3a3a42;   /* stronger border */
 
-  --gr:     #15803d;
-  --gr-bg:  #f0fdf4;
-  --gr-md:  #dcfce7;
-  --gr-bdr: #86efac;
+  /* brand signal accent (mint/emerald) — reserved for deals & CTAs */
+  --ac:     #2ee6a8;
+  --ac-ink: #04261c;   /* text on accent */
+  --ac-dim: rgba(46,230,168,.13);
+  --ac-bdr: rgba(46,230,168,.42);
 
-  --am:     #b45309;
-  --am-bg:  #fffbeb;
-  --am-bdr: #fcd34d;
+  --gr:     #34d399;
+  --gr-bg:  rgba(52,211,153,.12);
+  --gr-md:  rgba(52,211,153,.20);
+  --gr-bdr: rgba(52,211,153,.42);
 
-  --bl:     #1d4ed8;
-  --bl-bg:  #eff6ff;
-  --bl-bdr: #93c5fd;
+  --am:     #fbbf24;
+  --am-bg:  rgba(251,191,36,.12);
+  --am-bdr: rgba(251,191,36,.42);
 
-  --rd:     #b91c1c;
-  --rd-bg:  #fef2f2;
+  --bl:     #60a5fa;
+  --bl-bg:  rgba(96,165,250,.12);
+  --bl-bdr: rgba(96,165,250,.42);
 
-  --sh:     0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
-  --sh2:    0 4px 12px rgba(0,0,0,.09), 0 12px 32px rgba(0,0,0,.07);
+  --rd:     #f87171;
+  --rd-bg:  rgba(248,113,113,.13);
+
+  --sh:     0 1px 2px rgba(0,0,0,.5), 0 6px 22px rgba(0,0,0,.35);
+  --sh2:    0 16px 50px rgba(0,0,0,.6), 0 4px 14px rgba(0,0,0,.45);
   --r:  12px;
   --rs: 8px;
 }
@@ -52,8 +59,9 @@
 html { font-size: 13px; }
 body { background: var(--bg); font-family: var(--sans); color: var(--ink); min-height: 100vh; line-height: 1.5; }
 body::before {
-  content: ''; display: block; height: 3px;
-  background: linear-gradient(90deg, #18181b 0%, #71717a 50%, #18181b 100%);
+  content: ''; display: block; height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--ac) 50%, transparent 100%);
+  opacity: .8;
   position: fixed; top: 0; left: 0; right: 0; z-index: 999;
 }
 .app { max-width: 1080px; margin: 0 auto; padding: 3px 1.5rem 6rem; }
@@ -67,14 +75,13 @@ a { color: inherit; }
   margin-bottom: 1.5rem;
 }
 .hdr-logo {
-  width: 40px; height: 40px; border-radius: 11px;
-  background: linear-gradient(135deg, #18181b 0%, #52525b 100%); color: white;
+  width: 46px; height: 46px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
-  box-shadow: 0 2px 10px rgba(0,0,0,.2), 0 0 0 1px rgba(255,255,255,.08) inset;
 }
-.hdr-title { font-family: var(--serif); font-style: italic; font-size: 22px; line-height: 1; color: var(--ink); }
-.hdr-sub   { font-size: 11px; color: var(--ink3); margin-top: 3px; font-family: var(--mono); letter-spacing: .02em; }
+.hdr-logo svg { width: 46px; height: 46px; color: var(--ink); }
+.hdr-title { font-family: var(--sans); font-weight: 800; font-size: 21px; line-height: 1; color: var(--ink); letter-spacing: .14em; }
+.hdr-title .tm { color: var(--ink3); font-weight: 700; }
+.hdr-sub   { font-size: 10px; color: var(--ink3); margin-top: 5px; font-family: var(--mono); letter-spacing: .26em; text-transform: uppercase; }
 .hdr-r     { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .last-run  { font-size: 11px; color: var(--ink3); font-family: var(--mono); }
 .spill {
@@ -920,6 +927,58 @@ input:focus, select:focus {
   .pfin    { border-top: 1px solid var(--edge); background: var(--card); }
   .dom-badge { display: none; }
 }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   RISE DARK THEME — overrides for rules that assumed a light base.
+   Appended last so equal-specificity selectors win the cascade.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* Form controls: ensure dark surfaces + light text everywhere */
+input, select, textarea {
+  background: var(--card); color: var(--ink); border-color: var(--edge2);
+}
+input::placeholder, textarea::placeholder { color: var(--ink3); }
+/* native date/time/select pickers render legibly on dark */
+input[type="time"], input[type="date"] { color-scheme: dark; }
+select { color-scheme: dark; }
+
+/* Inverted-neutral buttons (selected states) — were black-on-white,
+   now light surface with dark text so they still read as "active". */
+.pill.active, .mchip.active, .sp.active, .mpbtn.save { color: var(--bg); }
+.toast { color: var(--bg); }
+
+/* Primary CTAs → brand accent */
+.sched-create-btn, .pd-check-btn, .disc-add-btn {
+  background: var(--ac); color: var(--ac-ink); border-color: var(--ac);
+}
+.sched-create-btn:hover, .pd-check-btn:hover { background: #25c992; }
+
+/* Header */
+.header { border-bottom-color: var(--edge); }
+
+/* Tabs */
+.tab { color: var(--ink3); }
+.tab:hover { color: var(--ink2); }
+.tab.active { color: var(--ink); }
+
+/* Map stays light-tiled (Leaflet) — keep its popups readable */
+.map-popup { color: #18181b; }
+
+/* Notification unread hover on dark */
+.notif-item.unread { background: var(--ac-dim); }
+.notif-item.unread:hover { background: rgba(46,230,168,.2); }
+
+/* Reg modal status bars: dark-friendly tints */
+.reg-status-bar.allowed     { background:var(--gr-bg); color:var(--gr); border:1px solid var(--gr-bdr); }
+.reg-status-bar.restricted  { background:var(--am-bg); color:var(--am); border:1px solid var(--am-bdr); }
+.reg-status-bar.banned      { background:var(--rd-bg); color:var(--rd); border:1px solid rgba(248,113,113,.4); }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 6px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--edge2); }
+* { scrollbar-color: var(--bg4) transparent; }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -929,10 +988,17 @@ input:focus, select:focus {
 
 <!-- ═══ HEADER ═══════════════════════════════════════════════ -->
 <div class="header">
-  <div class="hdr-logo">◎</div>
+  <div class="hdr-logo">
+    <!-- RISE mark — angular "R" with an upward-arrow counter -->
+    <svg viewBox="0 0 100 100" fill="none" aria-label="RISE">
+      <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"
+        d="M14 10 H72 L86 24 V40 L72 52 H52 L84 98 H58 L35 64 V98 H14 V10 Z
+           M38 24 H62 L50 44 Z"/>
+    </svg>
+  </div>
   <div>
-    <div class="hdr-title">STR Market Scanner</div>
-    <div class="hdr-sub">short-term rental deal finder</div>
+    <div class="hdr-title">RISE<span class="tm"> COLLECTIVE</span></div>
+    <div class="hdr-sub">STR market intelligence</div>
   </div>
   <span class="spill live" id="live-tag" style="display:none"><span class="dot"></span>live · redfin</span>
   <span class="spill demo" id="demo-tag" style="display:none">⚠ backend offline</span>
