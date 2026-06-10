@@ -12,6 +12,7 @@ import httpx
 
 from scraper import scrape_url, build_redfin_url, run_scan, MARKET_ZIPS
 from discover import discover_state
+import price_tracker
 
 # ── State abbreviation → URL slug ──────────────────────────────────────────
 STATE_SLUGS = {
@@ -237,6 +238,15 @@ async def redfin_search(
                 require_pool=pool,
                 min_yield=min_yield,
             )
+        # Track prices and annotate drops — runs in thread to avoid blocking event loop
+        if isinstance(results, list):
+            results = await asyncio.get_event_loop().run_in_executor(
+                None, price_tracker.update_prices, results
+            )
+        elif isinstance(results, dict) and "listings" in results:
+            results["listings"] = await asyncio.get_event_loop().run_in_executor(
+                None, price_tracker.update_prices, results["listings"]
+            )
         return results
 
     except Exception as e:
@@ -268,6 +278,92 @@ async def discover_markets(
     except Exception as e:
         print(f"[discover] ERROR {state}: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/price-drops")
+async def get_price_drops(min_drop_pct: float = Query(0.5)):
+    """
+    Return all tracked listings where the price has dropped since first seen.
+    Sorted by drop % descending.
+    """
+    try:
+        drops = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: price_tracker.get_price_drops(min_drop_pct)
+        )
+        stats = await asyncio.get_event_loop().run_in_executor(
+            None, price_tracker.get_stats
+        )
+        return {"drops": drops, "stats": stats}
+    except Exception as e:
+        print(f"[price-drops] ERROR: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/api/check-drops")
+async def check_price_drops(
+    max_dom:   int   = Query(180),   # broader DOM window to catch aging listings
+    min_price: int   = Query(0),
+    max_price: int   = Query(99999999),
+    min_beds:  int   = Query(1),
+):
+    """
+    Trigger a broad re-scan across all tracked markets with a relaxed DOM window
+    to surface price cuts on older listings. Returns only listings with a price drop.
+    """
+    markets = await asyncio.get_event_loop().run_in_executor(
+        None, price_tracker.get_tracked_markets
+    )
+    if not markets:
+        return {"drops": [], "message": "No tracked markets yet — run a regular scan first."}
+
+    criteria_base = {
+        "min_price":  min_price,
+        "max_price":  max_price,
+        "min_beds":   min_beds,
+        "max_beds":   10,
+        "min_baths":  1.0,
+        "max_dom":    max_dom,
+        "min_sqft":   0,
+        "max_sqft":   999999,
+        "keywords":   "",
+        "home_types": "1,2,3",
+    }
+
+    tasks = []
+    sem   = asyncio.Semaphore(3)
+
+    async def _scan_one(market: str, state: str):
+        url = build_redfin_url(market, state, criteria_base, pool=False, home_types="1,2,3")
+        async with sem:
+            try:
+                return await scrape_url(
+                    _browser, url, market, state, criteria_base,
+                    require_pool=False, min_yield=0.0,
+                )
+            except Exception as e:
+                print(f"[check-drops] {market} error: {e}")
+                return []
+
+    results = await asyncio.gather(*[_scan_one(m["market"], m["state"]) for m in markets])
+
+    all_listings = []
+    for r in results:
+        if isinstance(r, list):
+            all_listings.extend(r)
+        elif isinstance(r, dict) and "listings" in r:
+            all_listings.extend(r["listings"])
+
+    # Update price history and get annotated listings
+    annotated = await asyncio.get_event_loop().run_in_executor(
+        None, price_tracker.update_prices, all_listings
+    )
+
+    # Return only listings that have a price drop
+    drops = [lst for lst in annotated if lst.get("priceDrop")]
+    drops.sort(key=lambda x: x["priceDrop"]["dropPct"], reverse=True)
+
+    print(f"[check-drops] scanned {len(markets)} markets, found {len(drops)} price drops")
+    return {"drops": drops, "scanned": len(markets), "total": len(annotated)}
 
 
 @app.get("/api/regulations")

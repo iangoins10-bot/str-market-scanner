@@ -614,6 +614,27 @@ def _val(field):
         return field.get("value")
     return field
 
+def _stable_id(home, addr):
+    """
+    Build a STABLE listing identifier that does NOT change when the price changes.
+    This is critical for price-drop tracking: if the id included the price, every
+    price cut would look like a brand-new listing and the drop would never be
+    detected. Prefer Redfin's real property/listing IDs; fall back to address only.
+    """
+    for id_field in ("listingId", "mlsId", "propertyId", "id"):
+        v = _val(home.get(id_field)) if isinstance(home, dict) else None
+        if v is None and isinstance(home, dict):
+            v = home.get(id_field)
+        if v:
+            s = str(v).strip()
+            if s and s not in ("null", "None", "0"):
+                return f"rf{s}"
+    # Fallback: address only (NEVER include price — see docstring)
+    a = str(addr or "").strip().lower()
+    if a:
+        return f"a{abs(hash(a))}"
+    return None
+
 # Redfin's GIS API returns numeric OR string property type codes depending on
 # the API version.  Numeric: 1=SFH, 2=Condo, 3=Townhouse, 4=Multi-family,
 # 5=Land, 6=Other, 7=Mobile, 8=Co-op.  Always add both forms.
@@ -833,7 +854,7 @@ def build_listing(home, market_name, state, criteria, require_pool, min_yield):
             full_url = f"https://www.redfin.com/{state}/{slug}/filter/property-type=house,condo,townhouse"
 
     return {
-        "id":         abs(hash(addr + str(price))),
+        "id":         _stable_id(home, addr) or abs(hash(addr)),
         "addr":       addr,
         "city":       market_name,
         "state":      state,
@@ -1437,7 +1458,8 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                         tags.append("waterfront")
 
                     listings.append({
-                        "id":         abs(hash(addr + str(price))),
+                        # DOM-card path has no API object — address-only stable id
+                        "id":         _stable_id(None, addr) or abs(hash(addr)),
                         "addr":       addr,
                         "city":       market_name,
                         "state":      state,
