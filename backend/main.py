@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +11,7 @@ from playwright.async_api import async_playwright
 import httpx
 
 from scraper import scrape_url, build_redfin_url, run_scan, MARKET_ZIPS, resolve_region_url
+from geocode import geocode_missing
 from discover import discover_state
 import price_tracker
 from scheduler import ScanScheduler
@@ -155,6 +156,13 @@ async def run_market_scan(market: str, state: str, criteria: dict,
         listings = results
     else:
         listings = []
+    # DOM-fallback scrapes have no coordinates — geocode so map pins are exact
+    try:
+        geocoded = await geocode_missing(listings)
+        if geocoded:
+            print(f"[scan] {market}: geocoded {geocoded} listing(s)")
+    except Exception as e:
+        print(f"[scan] {market}: geocode skipped ({e})")
     annotated = await asyncio.get_event_loop().run_in_executor(
         None, price_tracker.update_prices, listings
     )
@@ -223,6 +231,16 @@ def get_results():
         return {"last_run": None, "count": 0, "listings": []}
     with open(DATA_FILE) as f:
         return json.load(f)
+
+
+@app.post("/api/results")
+def post_results(payload: dict = Body(...)):
+    """Persist a frontend scan so results survive page refreshes and restarts."""
+    listings = payload.get("listings") or []
+    if not isinstance(listings, list):
+        return JSONResponse({"error": "listings must be a list"}, status_code=400)
+    save_results(listings)
+    return {"saved": len(listings)}
 
 
 @app.post("/api/scan")

@@ -868,6 +868,30 @@ def _prop_type_allowed(prop_type, allowed_codes):
     return True   # unknown type or explicitly allowed
 
 
+def _extract_lat_lng(home):
+    """Pull listing coordinates from any of the shapes Redfin has used:
+    latLong.value.{latitude,longitude}, latLong.{latitude,longitude},
+    or flat lat/lng keys. Returns (lat, lng) or (None, None)."""
+    lat = lng = None
+    ll = home.get("latLong") or home.get("latLng")
+    if isinstance(ll, dict):
+        inner = ll.get("value") if isinstance(ll.get("value"), dict) else ll
+        lat = inner.get("latitude",  inner.get("lat"))
+        lng = inner.get("longitude", inner.get("lng"))
+    if lat is None:
+        lat = _val(home.get("lat")) or _val(home.get("latitude"))
+    if lng is None:
+        lng = _val(home.get("lng")) or _val(home.get("longitude"))
+    try:
+        lat, lng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return None, None
+    # Reject null-island and out-of-range junk
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180) or (lat == 0 and lng == 0):
+        return None, None
+    return lat, lng
+
+
 def build_listing(home, market_name, state, criteria, require_pool, min_yield):
     """Convert a Redfin API home object into our listing dict. Returns None if filtered out."""
     min_price     = criteria.get("min_price", 0)
@@ -1026,11 +1050,15 @@ def build_listing(home, market_name, state, criteria, require_pool, min_yield):
             slug = market_name.replace(" ", "-")
             full_url = f"https://www.redfin.com/{state}/{slug}/filter/property-type=house,condo,townhouse"
 
+    lat, lng = _extract_lat_lng(home)
+
     return {
         "id":         _stable_id(home, addr) or abs(hash(addr)),
         "addr":       addr,
         "city":       market_name,
         "state":      state,
+        "lat":        lat,
+        "lng":        lng,
         "price":      price,
         "beds":       beds,
         "baths":      baths,
@@ -1636,6 +1664,8 @@ async def scrape_url(browser, url, market_name, state, criteria, require_pool=Fa
                         "addr":       addr,
                         "city":       market_name,
                         "state":      state,
+                        "lat":        None,   # DOM cards carry no coordinates
+                        "lng":        None,
                         "price":      price,
                         "beds":       beds or 0,
                         "baths":      baths or 0,

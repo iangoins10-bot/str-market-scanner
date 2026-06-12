@@ -9,3 +9,4 @@ data/results.json
 data/price_history.json
 data/notifications.json
 data/schedules.json
+data/geocode_cache.json

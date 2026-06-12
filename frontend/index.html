@@ -906,7 +906,7 @@ input:focus, select:focus {
   margin-top: 12px;
 }
 .map-legend {
-  background: white; border-radius: var(--rs);
+  background: var(--card); border-radius: var(--rs);
   padding: 10px 14px; border: 1.5px solid var(--edge);
   box-shadow: var(--sh); font-family: var(--mono); font-size: 11px;
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
@@ -915,9 +915,30 @@ input:focus, select:focus {
 .map-legend-label { font-size: 10px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing:.08em; margin-right: 4px; }
 .map-legend-item { display: flex; align-items: center; gap: 6px; color: var(--ink2); }
 .map-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
-.leaflet-popup-content-wrapper { border-radius: 12px !important; font-family: system-ui,sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,.14) !important; }
+.leaflet-container { background: #0e0e11; }
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important; font-family: system-ui,sans-serif;
+  background: var(--card2) !important; color: var(--ink) !important;
+  border: 1px solid var(--edge2);
+  box-shadow: 0 8px 32px rgba(0,0,0,.55) !important;
+}
+.leaflet-popup-tip { background: var(--card2) !important; }
 .leaflet-popup-content { margin: 14px 16px !important; }
 .leaflet-popup-tip-container { margin-top: -1px !important; }
+.leaflet-container a.leaflet-popup-close-button { color: var(--ink3) !important; }
+/* Per-property price pin */
+.price-pin {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 9px; border-radius: 14px; white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  color: #fff; border: 1.5px solid rgba(255,255,255,.9);
+  box-shadow: 0 2px 8px rgba(0,0,0,.55);
+  transform: translate(-50%, -50%);
+  transition: transform .12s;
+  cursor: pointer;
+}
+.price-pin:hover { transform: translate(-50%,-50%) scale(1.12); z-index: 1000; }
+.price-pin.approx { border-style: dashed; opacity: .82; }
 
 @media (max-width: 700px) {
   .cgrid   { grid-template-columns: 1fr; }
@@ -961,8 +982,8 @@ select { color-scheme: dark; }
 .tab:hover { color: var(--ink2); }
 .tab.active { color: var(--ink); }
 
-/* Map stays light-tiled (Leaflet) — keep its popups readable */
-.map-popup { color: #18181b; }
+/* Map popups are themed dark via .leaflet-popup-content-wrapper above */
+.map-popup { color: var(--ink); }
 
 /* Notification unread hover on dark */
 .notif-item.unread { background: var(--ac-dim); }
@@ -1327,7 +1348,7 @@ select { color-scheme: dark; }
 <div id="tab-map" class="panel">
   <div class="map-toolbar">
     <span class="res-lbl" id="map-label">Run a scan, then view results on the map</span>
-    <span class="map-hint">● click a market pin for listings</span>
+    <span class="map-hint">● each pin is one property — click for details</span>
     <button class="icon-btn" style="margin-left:auto" onclick="renderMap()">↺ Refresh</button>
   </div>
   <div id="map-container"></div>
@@ -1337,7 +1358,7 @@ select { color-scheme: dark; }
     <span class="map-legend-item"><span class="map-dot" style="background:#22c55e"></span>10–12%</span>
     <span class="map-legend-item"><span class="map-dot" style="background:#f59e0b"></span>8–10%</span>
     <span class="map-legend-item"><span class="map-dot" style="background:#94a3b8"></span>&lt; 8%</span>
-    <span style="margin-left:auto;font-size:10px;color:var(--ink3)">Pin size = number of listings</span>
+    <span style="margin-left:auto;font-size:10px;color:var(--ink3)">Dashed pin = approximate location (re-scan to get exact)</span>
   </div>
   <div class="map-empty" id="map-empty">
     <div style="font-size:28px;margin-bottom:10px;opacity:.25">◎</div>
@@ -3514,9 +3535,11 @@ function _initMap() {
   if (mapInitialized) return;
   mapInitialized = true;
   mapInstance = L.map('map-container', { zoomControl: true }).setView([37.5, -96.0], 4);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
-    maxZoom: 18,
+  // Dark CARTO basemap — matches the RISE theme and makes yield-colored pins pop
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19,
   }).addTo(mapInstance);
 }
 
@@ -3525,6 +3548,55 @@ function _yieldColor(y) {
   if (y >= 10) return '#22c55e';
   if (y >= 8)  return '#f59e0b';
   return '#94a3b8';
+}
+
+// Deterministic jitter (±~0.012°, ~1.2 km) so coord-less listings in the same
+// city fan out around the city center instead of stacking on one point.
+function _jitter(id, axis) {
+  let h = 2166136261;
+  const s = String(id) + axis;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (((h >>> 0) / 4294967295) - 0.5) * 0.024;
+}
+
+function _propCoords(p) {
+  // Exact coordinates from the scraper when available
+  if (typeof p.lat === 'number' && typeof p.lng === 'number') {
+    return { coords: [p.lat, p.lng], exact: true };
+  }
+  const cc = MARKET_COORDS[p.city];
+  if (!cc) return null;
+  return { coords: [cc[0] + _jitter(p.id, 'lat'), cc[1] + _jitter(p.id, 'lng')], exact: false };
+}
+
+function _propPopup(p, exact) {
+  const yc  = _yieldColor(p.grossYield);
+  const img = p.imgSrc
+    ? `<img src="${p.imgSrc}" alt="" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:10px" onerror="this.remove()">`
+    : '';
+  const meta = [
+    p.beds  ? `${p.beds} bd`   : null,
+    p.baths ? `${p.baths} ba`  : null,
+    p.sqft  ? `${p.sqft.toLocaleString()} sqft` : null,
+    p.dom >= 0 ? `${p.dom}d on mkt` : null,
+  ].filter(Boolean).join(' · ');
+  return `
+    <div class="map-popup" style="min-width:220px;max-width:270px;font-family:system-ui,sans-serif">
+      ${img}
+      <div style="font-weight:800;font-size:14px;line-height:1.25;margin-bottom:2px">${p.addr}</div>
+      <div style="font-size:11px;color:var(--ink3);font-family:monospace;margin-bottom:10px">
+        ${p.city}, ${p.state}${exact ? '' : ' · ~approximate location'}
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+        <span style="font-family:monospace;font-size:19px;font-weight:800">$${Math.round(p.price/1000)}k</span>
+        <span style="font-family:monospace;font-size:14px;font-weight:700;color:${yc}">${p.grossYield>0?p.grossYield+'% yield':'— yield'}</span>
+      </div>
+      <div style="font-family:monospace;font-size:11px;color:var(--ink2);margin-bottom:10px">${meta}</div>
+      <a href="${_listingUrl(p)}" target="_blank"
+        style="font-size:11px;color:var(--ac);text-decoration:none;font-family:monospace;font-weight:700">
+        View on Redfin ↗
+      </a>
+    </div>`;
 }
 
 function renderMap() {
@@ -3548,81 +3620,37 @@ function renderMap() {
     return;
   }
   if (empty) empty.style.display = 'none';
-  if (lbl)   lbl.textContent = `${ps.length} propert${ps.length===1?'y':'ies'} across ${new Set(ps.map(p=>p.city)).size} markets`;
-
-  // Group by city
-  const byCity = {};
-  ps.forEach(p => { (byCity[p.city] = byCity[p.city] || []).push(p); });
 
   const bounds = [];
+  let exactCount = 0, skipped = 0;
 
-  Object.entries(byCity).forEach(([city, props]) => {
-    const coords = MARKET_COORDS[city];
-    if (!coords) return;
-    bounds.push(coords);
+  ps.forEach(p => {
+    const loc = _propCoords(p);
+    if (!loc) { skipped++; return; }
+    if (loc.exact) exactCount++;
+    bounds.push(loc.coords);
 
-    const avgYield = props.reduce((s, p) => s + (p.grossYield || 0), 0) / props.length;
-    const color    = _yieldColor(avgYield);
-    const radius   = Math.min(10 + props.length * 2.5, 28);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="price-pin${loc.exact ? '' : ' approx'}" style="background:${_yieldColor(p.grossYield)}">$${Math.round(p.price/1000)}k</div>`,
+      iconSize: [0, 0],
+    });
 
-    const marker = L.circleMarker(coords, {
-      radius,
-      fillColor: color,
-      color:       'white',
-      weight:      2,
-      opacity:     1,
-      fillOpacity: 0.88,
-    }).addTo(mapInstance);
+    const marker = L.marker(loc.coords, { icon, riseOnHover: true }).addTo(mapInstance);
+    marker.bindPopup(_propPopup(p, loc.exact), { maxWidth: 290, closeButton: true });
     mapMarkers.push(marker);
-
-    // Build popup rows (cap at 8, note overflow)
-    const rows = props.slice(0, 8).map(p => `
-      <div style="padding:7px 0;border-bottom:1px solid #f1f5f9">
-        <div style="font-weight:700;font-size:12px;margin-bottom:3px;line-height:1.3">${p.addr}</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-family:monospace;font-size:13px;font-weight:800">$${Math.round(p.price/1000)}k</span>
-          <span style="font-family:monospace;font-size:13px;font-weight:700;color:${_yieldColor(p.grossYield)}">${p.grossYield>0?p.grossYield+'%':'—'} yield</span>
-          <span style="font-family:monospace;font-size:11px;color:#64748b">${p.beds||'?'}bd · ${p.baths||'?'}ba${p.dom>=0?' · '+p.dom+'d':''}</span>
-        </div>
-        <a href="${_listingUrl(p)}" target="_blank"
-          style="font-size:10px;color:#1d4ed8;text-decoration:none;font-family:monospace;margin-top:2px;display:inline-block">
-          View on Redfin ↗
-        </a>
-      </div>`).join('');
-
-    const overflow = props.length > 8
-      ? `<div style="font-size:11px;color:#94a3b8;padding-top:6px;font-family:monospace">+${props.length-8} more — switch to List view</div>`
-      : '';
-
-    const popup = `
-      <div style="min-width:230px;max-width:290px;font-family:system-ui,sans-serif">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;gap:8px">
-          <div>
-            <div style="font-weight:800;font-size:16px;line-height:1.2">${city}</div>
-            <div style="font-size:11px;color:#64748b;font-family:monospace;margin-top:2px">
-              ${props.length} listing${props.length!==1?'s':''}
-            </div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:22px;font-weight:800;font-family:monospace;color:${color};line-height:1">
-              ${avgYield.toFixed(1)}%
-            </div>
-            <div style="font-size:10px;color:#94a3b8;font-family:monospace">avg yield</div>
-          </div>
-        </div>
-        ${rows}
-        ${overflow}
-      </div>`;
-
-    marker.bindPopup(popup, { maxWidth: 310, closeButton: true });
-
-    // Show city label on hover
-    marker.on('mouseover', function() { this.openPopup(); });
   });
+
+  if (lbl) {
+    const mkts = new Set(ps.map(p => p.city)).size;
+    lbl.textContent = `${ps.length} propert${ps.length===1?'y':'ies'} across ${mkts} market${mkts!==1?'s':''}`
+      + (exactCount < ps.length - skipped ? ` · ${exactCount} pinned exactly` : '')
+      + (skipped ? ` · ${skipped} unmappable` : '');
+  }
 
   if (bounds.length) {
     try {
-      mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
+      mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
     } catch(e) {}
   }
 
