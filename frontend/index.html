@@ -2598,19 +2598,30 @@ function liveRefilter() {
 
 // ─── DOM FILTER ────────────────────────────────────────────────
 function setDom(days, el) {
+  if (days === domFilter && el.classList.contains('active')) return;
   domFilter = days;
   document.querySelectorAll('.pill').forEach(p => {
     if (p.onclick && p.onclick.toString().includes('setDom')) p.classList.remove('active');
   });
   el.classList.add('active');
-  // Re-filter cached results immediately
-  buildChips(); renderResults();
-  // If widening beyond the last scan's range, warn the user they need to re-scan
+
   const warn = document.getElementById('dom-rescan-warn');
-  if (warn) {
-    const needRescan = lastScanDomFilter !== null && days > lastScanDomFilter && PROPS.length > 0;
-    warn.style.display = needRescan ? 'flex' : 'none';
+
+  // Days-on-market is a server-side search window: Redfin's list cards omit the
+  // listing age, so we can't narrow cached results client-side. If markets have
+  // already been scanned, re-run the scan with the new window so Redfin returns
+  // exactly the listings within it.
+  if (lastScanDomFilter !== null && days !== lastScanDomFilter
+      && backendOnline && !scanning && MARKETS.some(m => m.sel)) {
+    if (warn) warn.style.display = 'none';
+    toast(`Re-scanning for listings ≤ ${days} day${days !== 1 ? 's' : ''} on market…`);
+    runScan();
+    return;
   }
+
+  // No prior scan (or offline/demo): just refresh the view with what we have.
+  buildChips(); renderResults();
+  if (warn) warn.style.display = 'none';
 }
 
 // ─── FETCH ────────────────────────────────────────────────────
@@ -2646,7 +2657,7 @@ async function fetchMkt(mkt, criteria) {
     min_beds:   criteria.bedsMin,
     max_beds:   criteria.bedsMax,
     min_baths:  criteria.bathsMin,
-    max_dom:    30,   // always fetch 30 days; client-side filter handles 1/7/30 display
+    max_dom:    domFilter || 30,   // scan the selected window; Redfin's max-days-on-market filter is authoritative
     min_yield:  criteria.yieldMin || 0,
     keywords:   criteria.keywords.join(','),
     home_types: getHomeTypeCodes(),
@@ -2825,10 +2836,12 @@ function matches(p, c, activeCodes, mktMap) {
   if (p.beds  < c.bedsMin  || p.beds  > c.bedsMax)  return false;
   if (c.bathsMin > 1 && p.baths > 0 && p.baths < c.bathsMin) return false;
   if (c.yieldMin > 0 && p.grossYield > 0 && p.grossYield < c.yieldMin) return false;
+  // Days-on-market is enforced server-side: the scan requests Redfin's
+  // max-days-on-market=<domFilter> filter, so every returned listing is
+  // already within the window. Redfin's list cards omit the listing age, so
+  // most listings arrive with dom=-1 (unknown) — narrowing those here would
+  // wrongly hide them. Only reject when we have a KNOWN dom that exceeds it.
   if (p.dom >= 0 && p.dom > domFilter) return false;
-  // dom=-1 means DOM is unknown. If the backend flagged isNew=true (≤1 day),
-  // let it through even the tightest filter. Otherwise reject when filter ≤ 7d.
-  if (p.dom === -1 && !p.isNew && domFilter <= 7) return false;
   if (p.sqft > 0 && (p.sqft < c.sqftMin || p.sqft > c.sqftMax)) return false;
 
   if (mkt && mkt.pool && p.hasPool === false) return false;
