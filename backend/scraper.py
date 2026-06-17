@@ -226,6 +226,26 @@ MARKET_ZIPS = {
     "Angel Fire":         "87710",
     # Wisconsin (extra)
     "Baraboo":            "53913",
+    # Added from market watchlist
+    "Bonita Springs":     "34134",
+    "Navarre":            "32566",
+    "Tallahassee":        "32301",
+    "Galveston":          "77550",
+    "College Station":    "77840",
+    "Shandaken":          "12480",
+    "Jeffersonville":     "12748",
+    "Wilmington":         "12997",
+    "McHenry":            "21541",
+    "Stowe":              "05672",
+    "Muskegon":           "49440",
+    "Pittsburgh":         "15222",
+    "Brian Head":         "84719",
+    "Bailey":             "80421",
+    "Seaside":            "97138",
+    "Newport":            "97365",
+    "Bloomington":        "61701",
+    "Charlotte":          "28202",
+    "Tulsa":              "74103",
 }
 
 # Legacy hardcoded markets (kept for backwards-compat with /api/scan)
