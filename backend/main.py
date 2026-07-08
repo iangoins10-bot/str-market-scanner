@@ -12,6 +12,7 @@ import httpx
 
 from scraper import scrape_url, build_redfin_url, run_scan, MARKET_ZIPS, resolve_region_url
 from geocode import geocode_missing
+import market_intel
 from discover import discover_state
 import price_tracker
 from scheduler import ScanScheduler
@@ -166,6 +167,11 @@ async def run_market_scan(market: str, state: str, criteria: dict,
     annotated = await asyncio.get_event_loop().run_in_executor(
         None, price_tracker.update_prices, listings
     )
+    # Record a market-performance snapshot for the Deal Finder
+    try:
+        market_intel.record_market_stats(market, state, annotated)
+    except Exception as e:
+        print(f"[intel] stats record failed {market}: {e}")
     if isinstance(results, dict) and "listings" in results:
         results["listings"] = annotated
         return results
@@ -438,6 +444,26 @@ async def get_regulations(city: str = Query(...), state: str = Query(...)):
     except Exception as e:
         print(f"[regs] ERROR {city}, {state}: {e}")
         return JSONResponse(status_code=500, content={'error': str(e), 'sourceUrl': source_url})
+
+
+@app.get("/api/market-intel")
+async def market_intel_batch(markets: str = Query(..., description="Semicolon list of City|ST pairs")):
+    """Batch market intelligence: regulation profile + deal gating + scan stats.
+
+    markets = "Gatlinburg|TN;Sedona|AZ;..."  (max 40 per call)
+    """
+    pairs = []
+    for part in markets.split(";"):
+        if "|" in part:
+            city, st = part.split("|", 1)
+            city, st = city.strip(), st.strip()
+            if city and st:
+                pairs.append((city, st))
+    if not pairs:
+        return JSONResponse(status_code=400, content={"error": "no valid City|ST pairs"})
+    pairs = pairs[:40]
+    intel = await market_intel.get_intel(pairs)
+    return {"intel": intel}
 
 
 # ── Scheduled scans ─────────────────────────────────────────────────────────

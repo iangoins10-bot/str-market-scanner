@@ -10,3 +10,5 @@ data/price_history.json
 data/notifications.json
 data/schedules.json
 data/geocode_cache.json
+data/market_stats.json
+data/regulations_cache.json

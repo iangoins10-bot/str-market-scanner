@@ -985,6 +985,25 @@ select { color-scheme: dark; }
 /* Map popups are themed dark via .leaflet-popup-content-wrapper above */
 .map-popup { color: var(--ink); }
 
+/* ━━━ DEAL FINDER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.df-badge { font-family:var(--mono); font-size:10px; font-weight:700; padding:3px 9px; border-radius:12px; letter-spacing:.04em; white-space:nowrap; }
+.df-badge.ok      { background:var(--gr-bg); color:var(--gr); border:1px solid var(--gr); }
+.df-badge.warn    { background:rgba(251,191,36,.12); color:var(--am); border:1px solid var(--am); }
+.df-badge.blocked { background:rgba(248,113,113,.12); color:var(--rd); border:1px solid var(--rd); }
+.df-badge.unknown { background:var(--bg3); color:var(--ink3); border:1px solid var(--edge2); }
+.df-mkt { background:var(--card); border:1.5px solid var(--edge); border-radius:var(--r); padding:14px 16px; }
+.df-mkt.blocked { opacity:.55; }
+.df-blk { font-size:11px; padding:2px 0; color:var(--ink2); line-height:1.45; }
+.df-blk.block  { color:var(--rd); }
+.df-blk.severe { color:var(--am); }
+.df-stat { text-align:center; background:var(--bg3); border-radius:8px; padding:7px 4px; }
+.df-stat b    { display:block; font-family:var(--mono); font-size:13px; }
+.df-stat span { font-size:9px; color:var(--ink3); text-transform:uppercase; letter-spacing:.05em; }
+.df-deal { display:flex; align-items:center; gap:14px; background:var(--card); border:1.5px solid var(--edge); border-radius:var(--rs); padding:12px 16px; margin-bottom:8px; flex-wrap:wrap; }
+.df-deal:hover { border-color:var(--edge2); }
+.df-deal .rank { font-family:var(--mono); font-weight:800; font-size:16px; color:var(--ac); min-width:34px; }
+.df-score { font-family:var(--mono); font-weight:800; font-size:18px; margin-left:auto; }
+
 /* Notification unread hover on dark */
 .notif-item.unread { background: var(--ac-dim); }
 .notif-item.unread:hover { background: rgba(46,230,168,.2); }
@@ -1051,6 +1070,7 @@ select { color-scheme: dark; }
   <button class="tab" onclick="switchTab('results')">Results <span class="bnum" id="res-badge">—</span></button>
   <button class="tab" onclick="switchTab('map')">Map <span class="bnum" id="map-badge">—</span></button>
   <button class="tab" onclick="switchTab('toppicks')">🏆 Top Picks <span class="bnum" id="tp-badge">—</span></button>
+  <button class="tab" onclick="switchTab('deals')">🎯 Deal Finder</button>
   <button class="tab" onclick="switchTab('favorites')">Saved <span class="bnum" id="fav-badge">0</span></button>
   <button class="tab" onclick="switchTab('schedules')">Schedules</button>
   <button class="tab" onclick="switchTab('discover')">🔍 Discover Markets</button>
@@ -1364,6 +1384,30 @@ select { color-scheme: dark; }
     <div style="font-size:28px;margin-bottom:10px;opacity:.25">◎</div>
     <strong>No results to map</strong><br>
     <span style="font-size:12px">Run a scan or adjust your filters to see listings.</span>
+  </div>
+</div>
+
+<!-- ═══ DEAL FINDER TAB ══════════════════════════════════════ -->
+<div id="tab-deals" class="panel">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div>
+      <div class="pd-title">🎯 Deal Finder</div>
+      <div class="pd-sub">Ranks scanned listings by deal quality × regulation risk — NOO status, permit caps, day limits, zoning, and market performance.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);cursor:pointer">
+        <input type="checkbox" id="df-noo-only" checked onchange="renderDeals()"> NOO-allowed only
+      </label>
+      <button class="btn" id="df-run" onclick="analyzeDeals()">⚡ Analyze markets</button>
+    </div>
+  </div>
+  <div id="df-status" style="font-size:12px;color:var(--ink3);font-family:var(--mono);margin-bottom:12px"></div>
+  <div id="df-markets" class="disc-results" style="margin-bottom:22px"></div>
+  <div id="df-deals"></div>
+  <div class="map-empty" id="df-empty" style="display:block">
+    <div style="font-size:28px;margin-bottom:10px;opacity:.25">🎯</div>
+    <strong>Scan first, then analyze</strong><br>
+    <span style="font-size:12px">Run a scan on the Markets tab, then hit "Analyze markets" to pull regulations + market performance and rank every deal.</span>
   </div>
 </div>
 
@@ -1798,6 +1842,7 @@ function switchTab(name) {
   const panel = document.getElementById('tab-'+name);
   if (panel) panel.classList.add('active');
   if (name==='results')    { buildChips(); renderResults(); }
+  if (name==='deals')      renderDeals();
   if (name==='favorites')  renderFavorites();
   if (name==='map')        { renderMap(); }
   if (name==='discover')   initDiscoverState();
@@ -3704,6 +3749,123 @@ function renderMap() {
 
   // Leaflet needs a size refresh after the tab becomes visible
   setTimeout(() => mapInstance.invalidateSize(), 80);
+}
+
+// ─── DEAL FINDER ──────────────────────────────────────────────
+let INTEL = {};          // "City|ST" → market intel (regs + stats + gating)
+let _dfAnalyzing = false;
+
+async function analyzeDeals() {
+  if (_dfAnalyzing) return;
+  const cities = [...new Set(PROPS.map(p => p.city + '|' + p.state))];
+  if (!cities.length) { toast('Run a scan first — no listings loaded'); return; }
+  _dfAnalyzing = true;
+  const btn = document.getElementById('df-run');
+  btn.disabled = true; btn.textContent = '⏳ Analyzing…';
+  const status = document.getElementById('df-status');
+  try {
+    for (let i = 0; i < cities.length; i += 20) {
+      const chunk = cities.slice(i, i + 20);
+      status.textContent = `Pulling regulations + market stats… ${Math.min(i + 20, cities.length)}/${cities.length} markets`;
+      const r = await fetch(`${BACKEND}/api/market-intel?markets=` + encodeURIComponent(chunk.join(';')));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      (d.intel || []).forEach(m => { INTEL[m.market + '|' + m.state] = m; });
+    }
+    status.textContent = `${cities.length} market(s) analyzed · ${new Date().toLocaleTimeString()}`;
+    renderDeals();
+  } catch (e) {
+    console.error(e);
+    toast('Intel fetch failed: ' + e.message, false);
+    status.textContent = 'Analysis failed — is the backend running?';
+  }
+  btn.disabled = false; btn.textContent = '⚡ Analyze markets';
+  _dfAnalyzing = false;
+}
+
+function _regBadge(m) {
+  if (!m) return '<span class="df-badge unknown">? no data</span>';
+  if (!m.nooAllowed) return '<span class="df-badge blocked">✕ BLOCKED</span>';
+  if (m.dealMultiplier >= 0.85) return '<span class="df-badge ok">✓ NOO-friendly</span>';
+  return '<span class="df-badge warn">⚠ restrictions</span>';
+}
+
+function renderDeals() {
+  const mktsEl  = document.getElementById('df-markets');
+  const dealsEl = document.getElementById('df-deals');
+  const empty   = document.getElementById('df-empty');
+  if (!mktsEl) return;
+  const keys = Object.keys(INTEL);
+  if (!keys.length) {
+    empty.style.display = 'block'; mktsEl.innerHTML = ''; dealsEl.innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+  const nooOnly = document.getElementById('df-noo-only').checked;
+
+  // ── Market intel cards, best market first ──
+  const mkts = keys.map(k => INTEL[k])
+    .sort((a, b) => b.dealMultiplier - a.dealMultiplier
+                 || ((b.regs && b.regs.nooScore) || 0) - ((a.regs && a.regs.nooScore) || 0));
+  mktsEl.innerHTML = mkts.map(m => {
+    const s = m.stats || {};
+    const score = m.regs && m.regs.nooScore >= 0 ? m.regs.nooScore : null;
+    const blks = (m.blockers || []).slice(0, 4).map(b =>
+      `<div class="df-blk ${b.severity}">${b.severity === 'block' ? '✕' : b.severity === 'severe' ? '⚠' : '•'} ${b.label}</div>`
+    ).join('') || '<div class="df-blk">No regulatory blockers detected</div>';
+    return `<div class="df-mkt ${m.nooAllowed ? '' : 'blocked'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+        <b style="font-size:14px">${m.market}, ${m.state}</b>${_regBadge(m)}
+      </div>
+      ${score != null ? `<div style="height:5px;background:var(--bg3);border-radius:3px;margin-bottom:10px" title="STR-friendliness ${score}/100">
+        <div style="height:5px;border-radius:3px;width:${score}%;background:${score >= 70 ? 'var(--gr)' : score >= 40 ? 'var(--am)' : 'var(--rd)'}"></div>
+      </div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px">
+        <div class="df-stat"><b>${s.medianPrice ? '$' + Math.round(s.medianPrice / 1000) + 'k' : '—'}</b><span>med price</span></div>
+        <div class="df-stat"><b>${s.avgYield != null ? s.avgYield + '%' : '—'}</b><span>avg yield</span></div>
+        <div class="df-stat"><b>${s.estAdr ? '$' + s.estAdr : '—'}</b><span>est ADR</span></div>
+        <div class="df-stat"><b>${s.avgDom != null ? s.avgDom + 'd' : '—'}</b><span>avg dom</span></div>
+        <div class="df-stat"><b>${s.dropRate != null ? s.dropRate + '%' : '—'}</b><span>drop rate</span></div>
+      </div>
+      ${blks}
+      ${m.regs && m.regs.sourceUrl ? `<a href="${m.regs.sourceUrl}" target="_blank" style="font-size:10px;color:var(--ac);font-family:var(--mono);text-decoration:none">regulation source ↗</a>` : ''}
+    </div>`;
+  }).join('');
+
+  // ── Ranked deals: financial score × regulation multiplier ──
+  const cfS = getCFSettings();
+  let deals = PROPS.map(p => {
+    const intel = INTEL[p.city + '|' + p.state];
+    const mult  = intel ? intel.dealMultiplier : 0.8;   // unanalyzed market: mild discount
+    return { p, intel, mult, score: Math.round(calcPotentialScore(p, cfS) * mult) };
+  });
+  if (nooOnly) deals = deals.filter(d => !d.intel || d.intel.nooAllowed);
+  deals.sort((a, b) => b.score - a.score);
+  deals = deals.slice(0, 30);
+
+  dealsEl.innerHTML =
+    `<div class="pd-title" style="font-size:15px;margin:4px 0 12px">Top deals <span style="font-size:11px;color:var(--ink3);font-family:var(--mono);font-weight:400">· deal score × regulation multiplier</span></div>` +
+    (deals.length ? deals.map((d, i) => {
+      const p  = d.p;
+      const cf = calcFinancials(p, cfS);
+      const hardBlks = d.intel ? d.intel.blockers.filter(b => b.severity !== 'caution') : [];
+      const chips = hardBlks.length
+        ? `<span style="font-size:10px;color:var(--am);font-family:var(--mono)">⚠ ${hardBlks.map(b => b.label.split('—')[0].trim()).slice(0, 2).join(' · ')}</span>`
+        : '';
+      return `<div class="df-deal">
+        <span class="rank">#${i + 1}</span>
+        <div style="min-width:210px;flex:1">
+          <div style="font-weight:700;font-size:13px">${p.addr}</div>
+          <div style="font-size:11px;color:var(--ink3);font-family:var(--mono);display:flex;align-items:center;gap:8px;margin-top:2px">${p.city}, ${p.state} ${_regBadge(d.intel)}</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">$${Math.round(p.price / 1000)}k</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--gr)">${p.grossYield > 0 ? p.grossYield + '% yld' : '—'}</div>
+        <div style="font-family:var(--mono);font-size:12px;color:${cf.netMonthly >= 0 ? 'var(--gr)' : 'var(--rd)'}">${cf.netMonthly >= 0 ? '+' : '−'}$${Math.abs(Math.round(cf.netMonthly)).toLocaleString()}/mo</div>
+        ${chips}
+        <a href="${_listingUrl(p)}" target="_blank" style="font-size:11px;color:var(--ac);font-family:var(--mono);text-decoration:none">Redfin ↗</a>
+        <span class="df-score" style="color:${d.score >= 65 ? 'var(--gr)' : d.score >= 45 ? 'var(--am)' : 'var(--ink3)'}">${d.score}</span>
+      </div>`;
+    }).join('') : '<div style="color:var(--ink3);font-size:13px;padding:20px;text-align:center">No deals pass the current gate — re-scan, or uncheck "NOO-allowed only".</div>');
 }
 
 init();

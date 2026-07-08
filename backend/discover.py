@@ -125,13 +125,31 @@ def parse_city_regs(html: str, source_url: str, city: str, state: str) -> dict:
     tl = text.lower()
 
     # ── Overall STR operating status ─────────────────────────────
+    # Zone-mixed pages ("allowed in R-2 but prohibited in R-1") are
+    # 'restricted', NOT banned — only a city-wide ban sentence counts.
     str_status = 'unknown'
-    if re.search(r'\bprohibited\b|\bstr.*\bban\b|\billegal\b|\bnot\s+allowed\b|\bnot\s+permitted\b', tl):
+    has_allowed = bool(re.search(r'\ballowed\b|\bpermitted\b|\blicensed\b|\blegal\b', tl))
+    citywide_ban = bool(re.search(
+        r'(?:short.?term\s+rentals?|strs?\b|airbnbs?|vacation\s+rentals?)'
+        r'[^.\n]{0,60}\b(?:are\s+|is\s+)?(?:prohibited|banned|illegal|not\s+allowed|not\s+permitted)'
+        r'(?![^.\n]{0,40}(?:zone|district|area|r-\d|neighborhood))',
+        tl
+    ))
+    zone_mixed = bool(re.search(
+        r'(?:allowed|permitted)[^.\n]{0,100}(?:prohibited|banned|not\s+permitted)'
+        r'|(?:prohibited|banned)[^.\n]{0,100}(?:allowed|permitted)',
+        tl
+    ))
+    if citywide_ban and not (has_allowed or zone_mixed):
         str_status = 'banned'
     elif re.search(r'\bunregulated\b|\bno\s+specific\s+reg', tl):
         str_status = 'unregulated'
-    elif re.search(r'\ballowed\b|\bpermitted\b|\blicensed\b|\blegal\b', tl):
+    elif zone_mixed:
+        str_status = 'restricted'
+    elif has_allowed:
         str_status = 'allowed'
+    elif re.search(r'\bprohibited\b|\billegal\b|\bnot\s+allowed\b|\bnot\s+permitted\b', tl):
+        str_status = 'banned'
     elif re.search(r'\brestrict', tl):
         str_status = 'restricted'
 
@@ -210,13 +228,20 @@ def parse_city_regs(html: str, source_url: str, city: str, state: str) -> dict:
                 break
 
     # ── Annual rental days cap ───────────────────────────────────
+    # Requires explicit cap language; bare "N days per year" phrases are
+    # usually tax thresholds ("rented fewer than 14 days/year is exempt").
     days_cap = None
     for pat in [
-        r'(\d+)\s+days?\s+(?:per\s+year|annually|per\s+calendar\s+year)',
-        r'(?:limit|cap|maximum)\s+(?:of\s+)?(\d+)\s+(?:rental\s+)?days?\s+(?:per|a)\s+year',
+        r'(?:limit(?:ed)?|cap(?:ped)?|maximum|max|no\s+more\s+than|up\s+to)'
+        r'[^\d\n]{0,25}(\d+)\s+(?:rental\s+)?days?\s+(?:per|a|each)\s+(?:calendar\s+)?year',
+        r'(?:rent(?:ed|al)?|operate[d]?)[^\d\n]{0,30}(?:maximum|max|no\s+more\s+than)'
+        r'[^\d\n]{0,15}(\d+)\s+days?',
     ]:
         m = re.search(pat, tl)
         if m:
+            ctx = tl[max(0, m.start() - 80):m.end() + 80]
+            if re.search(r'tax|exempt|fewer\s+than|less\s+than', ctx):
+                continue   # tax-exemption threshold, not an operating cap
             days_cap = int(m.group(1))
             break
 
