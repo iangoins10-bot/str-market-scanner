@@ -64,8 +64,80 @@ body::before {
   opacity: .8;
   position: fixed; top: 0; left: 0; right: 0; z-index: 999;
 }
-.app { max-width: 1080px; margin: 0 auto; padding: 3px 1.5rem 6rem; }
+.app { display: flex; align-items: flex-start; min-height: 100vh; }
 a { color: inherit; }
+
+/* ━━━ SIDEBAR SHELL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.sidebar {
+  position: sticky; top: 0; align-self: stretch;
+  width: 244px; flex-shrink: 0; height: 100vh;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 22px 14px 16px;
+  background: linear-gradient(180deg, var(--card) 0%, var(--bg) 100%);
+  border-right: 1px solid var(--edge);
+  z-index: 50;
+}
+.side-brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 20px; }
+.side-nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
+.nav-sec {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--ink3); padding: 16px 12px 6px; opacity: .8;
+}
+.nav-sec:first-child { padding-top: 4px; }
+.navitem {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 9px 12px; border-radius: 10px;
+  font-size: 13px; font-weight: 500; color: var(--ink2);
+  background: transparent; border: none; cursor: pointer; text-align: left;
+  position: relative; font-family: var(--sans); white-space: nowrap;
+  transition: background .16s, color .16s;
+}
+.navitem .ni { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.7; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.navitem .ni-l { flex: 1; }
+.navitem:hover { background: var(--card2); color: var(--ink); }
+.navitem.active { background: var(--ac-dim); color: var(--ac); font-weight: 600; }
+.navitem.active .ni { opacity: 1; }
+.navitem.active::before {
+  content: ''; position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: var(--ac);
+  box-shadow: 0 0 12px var(--ac);
+}
+.navitem .bnum, .navitem .tab-badge-red { margin-left: auto; }
+.side-foot {
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  padding: 14px 10px 4px; border-top: 1px solid var(--edge); margin-top: 4px;
+}
+
+/* ━━━ MAIN COLUMN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.main { flex: 1; min-width: 0; max-width: 1180px; padding: 0 2.4rem 6rem; }
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: 14px;
+  padding: 20px 0 16px; margin-bottom: 22px;
+  border-bottom: 1px solid var(--edge);
+  background: linear-gradient(180deg, var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+.topbar-title { font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+.topbar .notif-wrap { margin-left: auto; }
+
+@media (max-width: 860px) {
+  .app { flex-direction: column; }
+  .sidebar {
+    position: static; width: 100%; height: auto; flex-direction: row;
+    align-items: center; gap: 2px; overflow-x: auto; padding: 12px;
+    border-right: none; border-bottom: 1px solid var(--edge);
+  }
+  .side-brand { padding: 0 12px 0 4px; border: none; }
+  .side-brand > div:last-child { display: none; }
+  .side-nav { flex-direction: row; overflow-x: auto; flex: 1; }
+  .nav-sec { display: none; }
+  .navitem { padding: 8px 12px; }
+  .navitem .ni-l { display: none; }
+  .navitem.active::before { display: none; }
+  .side-foot { display: none; }
+  .main { padding: 0 1.2rem 5rem; max-width: none; }
+}
 
 /* ━━━ HEADER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 .header {
@@ -95,15 +167,7 @@ a { color: inherit; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
 /* ━━━ TABS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-.tabs { display: flex; border-bottom: 1px solid var(--edge); margin-bottom: 1.75rem; }
-.tab {
-  font-size: 13px; font-weight: 500; padding: 10px 20px;
-  border: none; background: transparent; color: var(--ink3); cursor: pointer;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-  transition: color .15s, border-color .15s; white-space: nowrap; font-family: var(--sans);
-}
-.tab.active  { color: var(--ink); border-bottom-color: var(--ink); }
-.tab:hover:not(.active) { color: var(--ink2); }
+/* Legacy .tab styling now handled by .navitem in the sidebar shell */
 .panel { display: none; } .panel.active { display: block; }
 .bnum {
   display: inline-block; background: var(--bg3); border-radius: 20px;
@@ -974,14 +1038,6 @@ select { color-scheme: dark; }
 }
 .sched-create-btn:hover, .pd-check-btn:hover { background: #25c992; }
 
-/* Header */
-.header { border-bottom-color: var(--edge); }
-
-/* Tabs */
-.tab { color: var(--ink3); }
-.tab:hover { color: var(--ink2); }
-.tab.active { color: var(--ink); }
-
 /* Map popups are themed dark via .leaflet-popup-content-wrapper above */
 .map-popup { color: var(--ink); }
 
@@ -1124,24 +1180,69 @@ body::after {
 <body>
 <div class="app">
 
-<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
-<div class="header">
-  <div class="hdr-logo">
-    <!-- RISE mark — angular "R" whose counter reads as an up-right arrow -->
-    <svg viewBox="0 0 100 100" fill="none" aria-label="RISE">
-      <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"
-        d="M16 10 H58 L82 26 L56 48 H50 L80 90 H54 L34 60 V90 H16 Z
-           M38 24 H58 L42 40 Z"/>
-    </svg>
+<!-- ═══ SIDEBAR ══════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="side-brand">
+    <div class="hdr-logo">
+      <!-- RISE mark — angular "R" whose counter reads as an up-right arrow -->
+      <svg viewBox="0 0 100 100" fill="none" aria-label="RISE">
+        <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"
+          d="M16 10 H58 L82 26 L56 48 H50 L80 90 H54 L34 60 V90 H16 Z
+             M38 24 H58 L42 40 Z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="hdr-title">RISE<span class="tm"> COLLECTIVE</span></div>
+      <div class="hdr-sub">STR intelligence</div>
+    </div>
   </div>
-  <div>
-    <div class="hdr-title">RISE<span class="tm"> COLLECTIVE</span></div>
-    <div class="hdr-sub">STR market intelligence</div>
-  </div>
-  <span class="spill live" id="live-tag" style="display:none"><span class="dot"></span>live · redfin</span>
-  <span class="spill demo" id="demo-tag" style="display:none">⚠ backend offline</span>
-  <div class="hdr-r">
+
+  <nav class="side-nav">
+    <div class="nav-sec">Discover</div>
+    <button class="tab navitem active" data-title="Markets &amp; Criteria" onclick="switchTab('markets')">
+      <svg viewBox="0 0 24 24" class="ni"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span class="ni-l">Markets &amp; Criteria</span></button>
+    <button class="tab navitem" data-title="Results" onclick="switchTab('results')">
+      <svg viewBox="0 0 24 24" class="ni"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg>
+      <span class="ni-l">Results</span><span class="bnum" id="res-badge">—</span></button>
+    <button class="tab navitem" data-title="Map" onclick="switchTab('map')">
+      <svg viewBox="0 0 24 24" class="ni"><path d="M12 21s-7-5.7-7-11a7 7 0 0114 0c0 5.3-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <span class="ni-l">Map</span><span class="bnum" id="map-badge">—</span></button>
+
+    <div class="nav-sec">Intelligence</div>
+    <button class="tab navitem" data-title="Top Picks" onclick="switchTab('toppicks')">
+      <svg viewBox="0 0 24 24" class="ni"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 01-12 0zM6 5H3v2a3 3 0 003 3M18 5h3v2a3 3 0 01-3 3"/></svg>
+      <span class="ni-l">Top Picks</span><span class="bnum" id="tp-badge">—</span></button>
+    <button class="tab navitem" data-title="Deal Finder" onclick="switchTab('deals')">
+      <svg viewBox="0 0 24 24" class="ni"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+      <span class="ni-l">Deal Finder</span></button>
+    <button class="tab navitem" data-title="Discover Markets" onclick="switchTab('discover')">
+      <svg viewBox="0 0 24 24" class="ni"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>
+      <span class="ni-l">Discover Markets</span></button>
+
+    <div class="nav-sec">Tracking</div>
+    <button class="tab navitem" data-title="Saved Deals" onclick="switchTab('favorites')">
+      <svg viewBox="0 0 24 24" class="ni"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
+      <span class="ni-l">Saved</span><span class="bnum" id="fav-badge">0</span></button>
+    <button class="tab navitem" data-title="Scheduled Scans" onclick="switchTab('schedules')">
+      <svg viewBox="0 0 24 24" class="ni"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span class="ni-l">Schedules</span></button>
+    <button class="tab navitem" data-title="Price Drops" onclick="switchTab('pricedrops')">
+      <svg viewBox="0 0 24 24" class="ni"><path d="M3 7l6 6 4-4 8 8M21 17v-4M21 17h-4"/></svg>
+      <span class="ni-l">Price Drops</span><span id="pd-tab-badge" style="display:none" class="tab-badge-red">0</span></button>
+  </nav>
+
+  <div class="side-foot">
+    <span class="spill live" id="live-tag" style="display:none"><span class="dot"></span>live · redfin</span>
+    <span class="spill demo" id="demo-tag" style="display:none">⚠ backend offline</span>
     <span class="last-run" id="last-run">—</span>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═════════════════════════════════════════════════ -->
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Markets &amp; Criteria</div>
     <div class="notif-wrap">
       <button class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()" title="Notifications">
         🔔<span class="notif-badge" id="notif-badge" style="display:none">0</span>
@@ -1160,20 +1261,6 @@ body::after {
       </div>
     </div>
   </div>
-</div>
-
-<!-- ═══ TABS ═════════════════════════════════════════════════ -->
-<div class="tabs">
-  <button class="tab active" onclick="switchTab('markets')">Markets &amp; Criteria</button>
-  <button class="tab" onclick="switchTab('results')">Results <span class="bnum" id="res-badge">—</span></button>
-  <button class="tab" onclick="switchTab('map')">Map <span class="bnum" id="map-badge">—</span></button>
-  <button class="tab" onclick="switchTab('toppicks')">🏆 Top Picks <span class="bnum" id="tp-badge">—</span></button>
-  <button class="tab" onclick="switchTab('deals')">🎯 Deal Finder</button>
-  <button class="tab" onclick="switchTab('favorites')">Saved <span class="bnum" id="fav-badge">0</span></button>
-  <button class="tab" onclick="switchTab('schedules')">Schedules</button>
-  <button class="tab" onclick="switchTab('discover')">🔍 Discover Markets</button>
-  <button class="tab" onclick="switchTab('pricedrops')">🔔 Price Drops <span id="pd-tab-badge" style="display:none" class="tab-badge-red">0</span></button>
-</div>
 
 <!-- ═══ MARKETS TAB ══════════════════════════════════════════ -->
 <div id="tab-markets" class="panel active">
@@ -1568,6 +1655,8 @@ body::after {
   </div>
 </div>
 
+</main>
+
 <div class="backdrop" id="backdrop" onclick="closeModal(event)">
   <div class="modal">
     <div class="modal-title">Add a market</div>
@@ -1939,6 +2028,10 @@ function switchTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const panel = document.getElementById('tab-'+name);
   if (panel) panel.classList.add('active');
+  // Reflect the active section in the top bar
+  const activeBtn = document.querySelector('.navitem.active');
+  const pt = document.getElementById('page-title');
+  if (activeBtn && pt) pt.textContent = activeBtn.getAttribute('data-title') || name;
   if (name==='results')    { buildChips(); renderResults(); }
   if (name==='deals')      renderDeals();
   if (name==='favorites')  renderFavorites();
