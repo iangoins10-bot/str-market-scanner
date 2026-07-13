@@ -2869,6 +2869,9 @@ async function runScan() {
   lastScanDomFilter = domFilter;  // record what range this scan covered
   const warn = document.getElementById('dom-rescan-warn');
   if (warn) warn.style.display = 'none';  // fresh scan — no warning needed
+
+  // Keep the Deal Finder fresh: pull regs + market stats for what we just scanned
+  if (PROPS.length && backendOnline) analyzeDeals().catch(() => {});
   txt.textContent = `Done — ${PROPS.length} propert${PROPS.length===1?'y':'ies'} found`;
   await new Promise(r=>setTimeout(r,700));
   prog.classList.remove('show');
@@ -3842,12 +3845,28 @@ function renderDeals() {
   if (nooOnly) deals = deals.filter(d => !d.intel || d.intel.nooAllowed);
   deals.sort((a, b) => b.score - a.score);
   deals = deals.slice(0, 30);
+  _dfLastDeals = deals;
 
   dealsEl.innerHTML =
-    `<div class="pd-title" style="font-size:15px;margin:4px 0 12px">Top deals <span style="font-size:11px;color:var(--ink3);font-family:var(--mono);font-weight:400">· deal score × regulation multiplier</span></div>` +
+    `<div style="display:flex;align-items:center;gap:12px;margin:4px 0 12px">
+      <div class="pd-title" style="font-size:15px;margin:0">Top deals <span style="font-size:11px;color:var(--ink3);font-family:var(--mono);font-weight:400">· deal score × regulation multiplier</span></div>
+      <button class="icon-btn" style="margin-left:auto" onclick="exportDeals()">↓ CSV</button>
+    </div>` +
     (deals.length ? deals.map((d, i) => {
       const p  = d.p;
       const cf = calcFinancials(p, cfS);
+      // ── Lender-grade underwriting ──
+      // DSCR = NOI / annual debt service (DSCR lenders want ≥ 1.2)
+      const noi  = cf.annualRevenue - cf.annualExp;
+      const dscr = cf.annualMortgage > 0 && cf.annualRevenue > 0 ? +(noi / cf.annualMortgage).toFixed(2) : null;
+      // Break-even occupancy: revenue scales with occupancy, mgmt fee scales with revenue
+      const fixedExp = cf.annualExp - cf.expMgmt;
+      const beOcc = p.airbnbEst > 0
+        ? Math.round((fixedExp + cf.annualMortgage) / (p.airbnbEst / 0.65 * (1 - cfS.mgmtPct)) * 100)
+        : null;
+      const dscrClr = dscr == null ? 'var(--ink3)' : dscr >= 1.2 ? 'var(--gr)' : dscr >= 1.0 ? 'var(--am)' : 'var(--rd)';
+      const beClr   = beOcc == null ? 'var(--ink3)' : beOcc <= 50 ? 'var(--gr)' : beOcc <= 65 ? 'var(--am)' : 'var(--rd)';
+      d.cf = cf; d.dscr = dscr; d.beOcc = beOcc;   // keep for CSV export
       const hardBlks = d.intel ? d.intel.blockers.filter(b => b.severity !== 'caution') : [];
       const chips = hardBlks.length
         ? `<span style="font-size:10px;color:var(--am);font-family:var(--mono)">⚠ ${hardBlks.map(b => b.label.split('—')[0].trim()).slice(0, 2).join(' · ')}</span>`
@@ -3861,11 +3880,42 @@ function renderDeals() {
         <div style="font-family:var(--mono);font-size:13px;font-weight:700">$${Math.round(p.price / 1000)}k</div>
         <div style="font-family:var(--mono);font-size:12px;color:var(--gr)">${p.grossYield > 0 ? p.grossYield + '% yld' : '—'}</div>
         <div style="font-family:var(--mono);font-size:12px;color:${cf.netMonthly >= 0 ? 'var(--gr)' : 'var(--rd)'}">${cf.netMonthly >= 0 ? '+' : '−'}$${Math.abs(Math.round(cf.netMonthly)).toLocaleString()}/mo</div>
+        <div style="font-family:var(--mono);font-size:11px;color:${dscrClr}" title="Debt-service coverage ratio — NOI ÷ annual mortgage. DSCR lenders typically require ≥ 1.2">DSCR ${dscr != null ? dscr : '—'}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:${beClr}" title="Occupancy needed to break even after all expenses and the mortgage">BE ${beOcc != null ? beOcc + '%' : '—'}</div>
         ${chips}
         <a href="${_listingUrl(p)}" target="_blank" style="font-size:11px;color:var(--ac);font-family:var(--mono);text-decoration:none">Redfin ↗</a>
-        <span class="df-score" style="color:${d.score >= 65 ? 'var(--gr)' : d.score >= 45 ? 'var(--am)' : 'var(--ink3)'}">${d.score}</span>
+        <span class="df-score" title="Financial score ${calcPotentialScore(p, cfS)} × regulation multiplier ${d.mult}" style="color:${d.score >= 65 ? 'var(--gr)' : d.score >= 45 ? 'var(--am)' : 'var(--ink3)'}">${d.score}</span>
       </div>`;
     }).join('') : '<div style="color:var(--ink3);font-size:13px;padding:20px;text-align:center">No deals pass the current gate — re-scan, or uncheck "NOO-allowed only".</div>');
+}
+
+let _dfLastDeals = [];
+
+function exportDeals() {
+  if (!_dfLastDeals.length) { toast('Nothing to export — analyze markets first'); return; }
+  const esc = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const rows = [[
+    'Rank','Address','City','State','Price','Gross Yield %','Cash Flow $/mo',
+    'DSCR','Break-even Occ %','Deal Score','Reg Multiplier','NOO Allowed','Blockers','Redfin URL'
+  ].join(',')];
+  _dfLastDeals.forEach((d, i) => {
+    const p = d.p;
+    rows.push([
+      i + 1, esc(p.addr), esc(p.city), p.state, p.price,
+      p.grossYield || '', d.cf ? Math.round(d.cf.netMonthly) : '',
+      d.dscr != null ? d.dscr : '', d.beOcc != null ? d.beOcc : '',
+      d.score, d.mult, d.intel ? d.intel.nooAllowed : 'unknown',
+      esc(d.intel ? d.intel.blockers.map(b => b.label).join(' | ') : ''),
+      esc(_listingUrl(p)),
+    ].join(','));
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `rise-deals-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`Exported ${_dfLastDeals.length} deals to CSV`);
 }
 
 init();

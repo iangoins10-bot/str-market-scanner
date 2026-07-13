@@ -119,6 +119,18 @@ async def get_regs(city: str, state: str, force: bool = False) -> dict:
     return regs
 
 
+# ── State preemption of local STR bans ──────────────────────────────────────
+# States whose law limits how far cities can go in banning STRs. The regex
+# parser only sees the city page, so without this a state-protected market
+# can read as banned/restricted.
+STATE_PREEMPTION = {
+    "AZ": "Arizona SB 1350 bars cities from banning STRs — local rules limited to permits, taxes, and nuisance",
+    "FL": "Florida preempts local STR bans (post-2011 ordinances) — cities may still license and inspect",
+    "TN": "Tennessee law grandfathers existing NOO STRs in most cities",
+    "TX": "Texas courts have repeatedly limited city STR bans — enforcement varies by city",
+}
+
+
 # ── Deal gating ─────────────────────────────────────────────────────────────
 def derive_blockers(regs: dict) -> tuple[list, float]:
     """Turn a regulation profile into (blockers, dealMultiplier).
@@ -195,6 +207,14 @@ def derive_blockers(regs: dict) -> tuple[list, float]:
     if strst in ("unknown", "not_found", "error"):
         blockers.append({"severity": "caution", "label": "No regulation data found — verify with the city directly"})
         mult = min(mult, 0.8)
+
+    # State preemption can override a local ban/restriction — soften the gate,
+    # but never past an explicit owner-occupied-only rule (those often survive).
+    state = (regs.get("state") or "").upper()
+    if state in STATE_PREEMPTION and strst in ("banned", "restricted") and not regs.get("ownerOccOnly"):
+        blockers.append({"severity": "caution",
+                         "label": f"State preemption: {STATE_PREEMPTION[state]}"})
+        mult = max(mult, 0.55)
 
     return blockers, round(mult, 2)
 
